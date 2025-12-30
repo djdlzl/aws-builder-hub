@@ -29,6 +29,7 @@ import {
   Search,
 } from "lucide-react";
 import { toast } from "sonner";
+import { ModulePreview } from "@/components/modules/ModulePreview";
 
 interface EC2Instance {
   id: string;
@@ -92,7 +93,7 @@ export default function EC2() {
               인스턴스 생성
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[500px] bg-card border-border">
+          <DialogContent className="sm:max-w-[600px] bg-card border-border">
             <DialogHeader>
               <DialogTitle className="text-foreground">새 EC2 인스턴스 생성</DialogTitle>
               <DialogDescription className="text-muted-foreground">
@@ -129,7 +130,7 @@ export default function EC2() {
               </div>
 
               <div className="grid gap-2">
-                <Label>태그 모듈 적용</Label>
+                <Label>모듈 적용</Label>
                 <Select value={selectedModule} onValueChange={setSelectedModule}>
                   <SelectTrigger className="bg-secondary border-border">
                     <SelectValue placeholder="모듈 선택 (선택사항)" />
@@ -141,6 +142,8 @@ export default function EC2() {
                   </SelectContent>
                 </Select>
               </div>
+
+              {selectedModule && <ModulePreview moduleName={selectedModule} />}
             </div>
 
             <DialogFooter>
