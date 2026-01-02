@@ -6,12 +6,16 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { ThemeProvider } from "@/hooks/use-theme";
 import { AWSProvider } from "@/hooks/use-aws-context";
+import { AuthProvider } from "@/hooks/use-auth";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import Index from "./pages/Index";
 import EC2 from "./pages/EC2";
 import RDS from "./pages/RDS";
 import S3 from "./pages/S3";
 import Modules from "./pages/Modules";
 import Settings from "./pages/Settings";
+import Login from "./pages/Login";
+import AWSAccounts from "./pages/AWSAccounts";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -19,23 +23,27 @@ const queryClient = new QueryClient();
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider>
-      <AWSProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <Routes>
-              <Route path="/" element={<MainLayout><Index /></MainLayout>} />
-              <Route path="/ec2" element={<MainLayout><EC2 /></MainLayout>} />
-              <Route path="/rds" element={<MainLayout><RDS /></MainLayout>} />
-              <Route path="/s3" element={<MainLayout><S3 /></MainLayout>} />
-              <Route path="/modules" element={<MainLayout><Modules /></MainLayout>} />
-              <Route path="/settings" element={<MainLayout><Settings /></MainLayout>} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </BrowserRouter>
-        </TooltipProvider>
-      </AWSProvider>
+      <AuthProvider>
+        <AWSProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
+              <Routes>
+                <Route path="/login" element={<Login />} />
+                <Route path="/" element={<ProtectedRoute><MainLayout><Index /></MainLayout></ProtectedRoute>} />
+                <Route path="/ec2" element={<ProtectedRoute><MainLayout><EC2 /></MainLayout></ProtectedRoute>} />
+                <Route path="/rds" element={<ProtectedRoute><MainLayout><RDS /></MainLayout></ProtectedRoute>} />
+                <Route path="/s3" element={<ProtectedRoute><MainLayout><S3 /></MainLayout></ProtectedRoute>} />
+                <Route path="/modules" element={<ProtectedRoute><MainLayout><Modules /></MainLayout></ProtectedRoute>} />
+                <Route path="/settings" element={<ProtectedRoute><MainLayout><Settings /></MainLayout></ProtectedRoute>} />
+                <Route path="/aws-accounts" element={<ProtectedRoute requiredRole="admin"><MainLayout><AWSAccounts /></MainLayout></ProtectedRoute>} />
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </BrowserRouter>
+          </TooltipProvider>
+        </AWSProvider>
+      </AuthProvider>
     </ThemeProvider>
   </QueryClientProvider>
 );

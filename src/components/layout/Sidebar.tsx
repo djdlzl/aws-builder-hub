@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/use-auth";
 import {
   LayoutDashboard,
   Server,
@@ -13,9 +14,18 @@ import {
   ChevronRight,
   Box,
   Layers,
+  Building2,
+  LogOut,
 } from "lucide-react";
 
-const navItems = [
+interface NavItem {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  path: string;
+  adminOnly?: boolean;
+}
+
+const navItems: NavItem[] = [
   { icon: LayoutDashboard, label: "대시보드", path: "/" },
   { icon: Server, label: "EC2 인스턴스", path: "/ec2" },
   { icon: Database, label: "RDS 데이터베이스", path: "/rds" },
@@ -24,11 +34,15 @@ const navItems = [
   { icon: Shield, label: "IAM 정책", path: "/iam" },
   { icon: Tags, label: "모듈 관리", path: "/modules" },
   { icon: Box, label: "템플릿", path: "/templates" },
+  { icon: Building2, label: "AWS 계정 관리", path: "/aws-accounts", adminOnly: true },
 ];
 
 export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
+  const { user, isAdmin, logout } = useAuth();
+
+  const filteredNavItems = navItems.filter(item => !item.adminOnly || isAdmin);
 
   return (
     <aside
@@ -59,7 +73,7 @@ export function Sidebar() {
       </div>
 
       <nav className="flex flex-col gap-1 p-3">
-        {navItems.map((item) => {
+        {filteredNavItems.map((item) => {
           const isActive = location.pathname === item.path;
           return (
             <Link
@@ -73,13 +87,34 @@ export function Sidebar() {
               )}
             >
               <item.icon className={cn("h-5 w-5 shrink-0", isActive && "text-primary")} />
-              {!collapsed && <span>{item.label}</span>}
+              {!collapsed && (
+                <span className="flex items-center gap-2">
+                  {item.label}
+                  {item.adminOnly && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/20 text-primary">Admin</span>
+                  )}
+                </span>
+              )}
             </Link>
           );
         })}
       </nav>
 
-      <div className="absolute bottom-0 left-0 right-0 border-t border-border p-3">
+      <div className="absolute bottom-0 left-0 right-0 border-t border-border p-3 space-y-1">
+        {/* User Info */}
+        {!collapsed && user && (
+          <div className="px-3 py-2 mb-2">
+            <p className="text-sm font-medium text-foreground truncate">{user.name}</p>
+            <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+            <span className={cn(
+              "inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded",
+              user.role === 'admin' ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"
+            )}>
+              {user.role === 'admin' ? 'Admin' : 'Developer'}
+            </span>
+          </div>
+        )}
+        
         <Link
           to="/settings"
           className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
@@ -87,6 +122,14 @@ export function Sidebar() {
           <Settings className="h-5 w-5 shrink-0" />
           {!collapsed && <span>설정</span>}
         </Link>
+        
+        <button
+          onClick={logout}
+          className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+        >
+          <LogOut className="h-5 w-5 shrink-0" />
+          {!collapsed && <span>로그아웃</span>}
+        </button>
       </div>
     </aside>
   );
