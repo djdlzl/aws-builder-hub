@@ -1,4 +1,11 @@
-import { Server, Database, Globe, Layers, DollarSign, Activity } from "lucide-react";
+import {
+  Server,
+  Database,
+  Globe,
+  Layers,
+  DollarSign,
+  Activity,
+} from "lucide-react";
 import { StatsCard } from "@/components/dashboard/StatsCard";
 import { ResourceTable } from "@/components/dashboard/ResourceTable";
 import { QuickActions } from "@/components/dashboard/QuickActions";
@@ -8,7 +15,9 @@ export default function Dashboard() {
     <div className="space-y-6 animate-fade-in">
       <div>
         <h1 className="text-3xl font-bold text-foreground">대시보드</h1>
-        <p className="text-muted-foreground mt-1">AWS 리소스 현황을 한눈에 확인하세요</p>
+        <p className="text-muted-foreground mt-1">
+          AWS 리소스 현황을 한눈에 확인하세요
+        </p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -39,10 +48,24 @@ export default function Dashboard() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-2 space-y-4">
+          <div>
+            <h2 className="text-xl font-semibold text-foreground">
+              최근 리소스
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              활성화된 AWS 리소스 목록
+            </p>
+          </div>
           <ResourceTable />
         </div>
-        <div>
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-xl font-semibold text-foreground">빠른 생성</h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              리소스를 빠르게 생성하세요
+            </p>
+          </div>
           <QuickActions />
         </div>
       </div>

@@ -12,11 +12,46 @@ interface Resource {
 }
 
 const resources: Resource[] = [
-  { id: "i-0abc123", name: "web-server-prod-01", type: "EC2", status: "running", region: "ap-northeast-2", createdAt: "2024-01-15" },
-  { id: "i-0def456", name: "api-server-prod-01", type: "EC2", status: "running", region: "ap-northeast-2", createdAt: "2024-01-15" },
-  { id: "db-xyz789", name: "main-database", type: "RDS", status: "running", region: "ap-northeast-2", createdAt: "2024-01-10" },
-  { id: "s3-bucket1", name: "assets-bucket", type: "S3", status: "running", region: "ap-northeast-2", createdAt: "2024-01-08" },
-  { id: "i-0ghi012", name: "worker-staging-01", type: "EC2", status: "stopped", region: "ap-northeast-2", createdAt: "2024-01-20" },
+  {
+    id: "i-0abc123",
+    name: "web-server-prod-01",
+    type: "EC2",
+    status: "running",
+    region: "ap-northeast-2",
+    createdAt: "2024-01-15",
+  },
+  {
+    id: "i-0def456",
+    name: "api-server-prod-01",
+    type: "EC2",
+    status: "running",
+    region: "ap-northeast-2",
+    createdAt: "2024-01-15",
+  },
+  {
+    id: "db-xyz789",
+    name: "main-database",
+    type: "RDS",
+    status: "running",
+    region: "ap-northeast-2",
+    createdAt: "2024-01-10",
+  },
+  {
+    id: "s3-bucket1",
+    name: "assets-bucket",
+    type: "S3",
+    status: "running",
+    region: "ap-northeast-2",
+    createdAt: "2024-01-08",
+  },
+  {
+    id: "i-0ghi012",
+    name: "worker-staging-01",
+    type: "EC2",
+    status: "stopped",
+    region: "ap-northeast-2",
+    createdAt: "2024-01-20",
+  },
 ];
 
 const statusStyles = {
@@ -36,11 +71,6 @@ const statusLabels = {
 export function ResourceTable() {
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
-      <div className="p-4 border-b border-border">
-        <h3 className="text-lg font-semibold text-foreground">최근 리소스</h3>
-        <p className="text-sm text-muted-foreground mt-1">활성화된 AWS 리소스 목록</p>
-      </div>
-
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
@@ -75,10 +105,14 @@ export function ResourceTable() {
                 className="hover:bg-accent/50 transition-colors"
               >
                 <td className="px-4 py-4">
-                  <code className="text-sm font-mono text-primary">{resource.id}</code>
+                  <code className="text-sm font-mono text-primary">
+                    {resource.id}
+                  </code>
                 </td>
                 <td className="px-4 py-4">
-                  <span className="text-sm font-medium text-foreground">{resource.name}</span>
+                  <span className="text-sm font-medium text-foreground">
+                    {resource.name}
+                  </span>
                 </td>
                 <td className="px-4 py-4">
                   <Badge variant="outline" className="font-mono text-xs">
@@ -91,10 +125,14 @@ export function ResourceTable() {
                   </Badge>
                 </td>
                 <td className="px-4 py-4">
-                  <span className="text-sm text-muted-foreground">{resource.region}</span>
+                  <span className="text-sm text-muted-foreground">
+                    {resource.region}
+                  </span>
                 </td>
                 <td className="px-4 py-4">
-                  <span className="text-sm text-muted-foreground">{resource.createdAt}</span>
+                  <span className="text-sm text-muted-foreground">
+                    {resource.createdAt}
+                  </span>
                 </td>
                 <td className="px-4 py-4 text-right">
                   <div className="flex items-center justify-end gap-2">
