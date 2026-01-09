@@ -16,6 +16,7 @@ import {
   Layers,
   Building2,
   LogOut,
+  Clock,
 } from "lucide-react";
 
 interface NavItem {
@@ -101,6 +102,22 @@ export function Sidebar() {
       </nav>
 
       <div className="absolute bottom-0 left-0 right-0 border-t border-border p-3 space-y-1">
+        {/* 서버 종료 예정 */}
+        {!collapsed && (
+          <div className="px-3 py-2 mb-2 rounded-lg bg-destructive/10 border border-destructive/20">
+            <div className="flex items-center gap-2 text-destructive">
+              <Clock className="h-4 w-4" />
+              <span className="text-xs font-medium">서버 종료 예정</span>
+            </div>
+            <p className="text-xs text-destructive/80 mt-1">2026-01-10 18:00</p>
+          </div>
+        )}
+        {collapsed && (
+          <div className="flex justify-center py-2 mb-2">
+            <Clock className="h-5 w-5 text-destructive" />
+          </div>
+        )}
+
         {/* User Info */}
         {!collapsed && user && (
           <div className="px-3 py-2 mb-2">
