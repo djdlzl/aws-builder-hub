@@ -1,0 +1,100 @@
+image:
+  name: 214789613470.dkr.ecr.ap-northeast-2.amazonaws.com/spoonarch/bitbucket-pipelines-jdk:latest
+  aws:
+    oidc-role: $MGT_ECR_ROLE_ARN
+definitions:
+  services:
+    docker:
+      memory: 2048
+  caches:
+    gradlewrapper: ~/.gradle/wrapper
+  steps:
+    - step: &build-application
+        size: 2x
+        name: Build Application
+        oidc: true
+        services:
+          - docker
+        caches:
+          - gradle
+          - gradlewrapper
+        script:
+          - bash /scripts/step-build-application.sh
+        artifacts:
+          - build/reports/tests/**
+          - build/jacoco/**
+        output-variables:
+          - VERSION
+    - step: &deploy-application
+        name: Deploy Application
+        oidc: true
+        clone:
+          enabled: false
+        script:
+          - bash /scripts/step-deploy-application.sh
+        artifacts:
+          download: false
+    - step: &validate-properties
+        name: Validate properties
+        oidc: true
+        clone:
+          enabled: false
+        script:
+          - bash /scripts/step-validate-properties.sh
+        artifacts:
+          download: false
+    - step: &update-gradle-properties
+        name: Update Gradle Properties
+        oidc: true
+        caches:
+          - gradle
+          - gradlewrapper
+        script:
+          - bash /scripts/step-update-gradle-properties.sh
+        artifacts:
+          download: false
+pipelines:
+  pull-requests:
+    "**":
+      - step: *build-application
+      - step:
+          <<: *deploy-application
+          name: Deploy Application to DEV
+          deployment: test
+      - step:
+          <<: *deploy-application
+          name: Deploy Application to STG
+          deployment: staging
+          trigger: manual
+      - step:
+          <<: *validate-properties
+          trigger: manual
+      - step:
+          <<: *deploy-application
+          name: Deploy Application to PRD
+          deployment: production
+          trigger: manual
+  custom:
+    docker-build-and-push:
+      - variables:
+          - name: VERSION
+      - step: *build-application
+      - step:
+          <<: *deploy-application
+          name: Deploy Application to DEV
+          deployment: test
+      - step:
+          <<: *deploy-application
+          name: Deploy Application to STG
+          deployment: staging
+          trigger: manual
+      - step:
+          <<: *validate-properties
+          trigger: manual
+      - step:
+          <<: *deploy-application
+          name: Deploy Application to PRD
+          deployment: production
+          trigger: manual
+    auto-update:
+      - step: *update-gradle-properties
