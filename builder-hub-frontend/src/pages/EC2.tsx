@@ -80,6 +80,110 @@ export default function EC2() {
         setIsLoading(false);
         return;
       }
+
+      // Check if admin_demo user is logged in
+      const isDemoAdmin =
+        localStorage.getItem("cloudforge_auth_token") ===
+        "mock-token-admin-demo";
+
+      if (isDemoAdmin) {
+        // Load dummy EC2 instances for admin_demo
+        const dummyInstances: EC2Instance[] = [
+          {
+            id: "i-1234567890abcdef0",
+            name: "demo-web-server-01",
+            type: "t3.medium",
+            status: "running",
+            publicIp: "54.180.1.100",
+            privateIp: "10.0.1.100",
+            az: "ap-northeast-2a",
+            accountName: "Demo Production Account",
+            region: "ap-northeast-2",
+          },
+          {
+            id: "i-0987654321fedcba0",
+            name: "demo-app-server-01",
+            type: "t3.large",
+            status: "running",
+            publicIp: "54.180.1.101",
+            privateIp: "10.0.1.101",
+            az: "ap-northeast-2b",
+            accountName: "Demo Production Account",
+            region: "ap-northeast-2",
+          },
+          {
+            id: "i-abcdef1234567890",
+            name: "demo-dev-server-01",
+            type: "t3.micro",
+            status: "stopped",
+            publicIp: "-",
+            privateIp: "10.0.2.50",
+            az: "ap-northeast-2a",
+            accountName: "Demo Development Account",
+            region: "ap-northeast-2",
+          },
+          {
+            id: "i-fedcba0987654321",
+            name: "demo-dev-server-02",
+            type: "t3.small",
+            status: "running",
+            publicIp: "54.180.1.102",
+            privateIp: "10.0.2.51",
+            az: "ap-northeast-2c",
+            accountName: "Demo Development Account",
+            region: "ap-northeast-2",
+          },
+          {
+            id: "i-1234567890abcde0",
+            name: "demo-staging-server",
+            type: "t3.medium",
+            status: "pending",
+            publicIp: "-",
+            privateIp: "10.0.3.100",
+            az: "ap-northeast-2a",
+            accountName: "Demo Staging Account",
+            region: "ap-northeast-2",
+          },
+          {
+            id: "i-0987654321abcde0",
+            name: "demo-batch-server-01",
+            type: "c5.xlarge",
+            status: "running",
+            publicIp: "54.180.1.103",
+            privateIp: "10.0.1.200",
+            az: "ap-northeast-2b",
+            accountName: "Demo Production Account",
+            region: "ap-northeast-2",
+          },
+          {
+            id: "i-abcdef1234fedcba0",
+            name: "demo-test-server-01",
+            type: "t3.micro",
+            status: "stopped",
+            publicIp: "-",
+            privateIp: "10.0.2.52",
+            az: "ap-northeast-2a",
+            accountName: "Demo Development Account",
+            region: "ap-northeast-2",
+          },
+          {
+            id: "i-5678901234abcdefg",
+            name: "demo-db-server-01",
+            type: "t3.large",
+            status: "running",
+            publicIp: "54.180.1.104",
+            privateIp: "10.0.1.150",
+            az: "ap-northeast-2c",
+            accountName: "Demo Production Account",
+            region: "ap-northeast-2",
+          },
+        ];
+
+        setInstances(dummyInstances);
+        setIsLoading(false);
+        return;
+      }
+
       try {
         const response = await fetch(
           buildApiUrl(API_CONFIG.ENDPOINTS.AWS_RESOURCES.EC2),

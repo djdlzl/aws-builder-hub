@@ -63,6 +63,93 @@ export function ResourceTable({ accounts = [] }: ResourceTableProps) {
         return;
       }
 
+      // Check if admin_demo user is logged in
+      const isDemoAdmin =
+        localStorage.getItem("cloudforge_auth_token") ===
+        "mock-token-admin-demo";
+
+      if (isDemoAdmin) {
+        // Load dummy resources for admin_demo
+        const dummyResources: Resource[] = [
+          {
+            id: "i-1234567890abcdef0",
+            name: "demo-web-server-01",
+            type: "EC2",
+            status: "running",
+            region: "ap-northeast-2",
+            createdAt: "2024-01-15",
+            accountName: "Demo Production Account",
+          },
+          {
+            id: "i-0987654321fedcba0",
+            name: "demo-app-server-01",
+            type: "EC2",
+            status: "running",
+            region: "ap-northeast-2",
+            createdAt: "2024-01-10",
+            accountName: "Demo Production Account",
+          },
+          {
+            id: "db-demo-prod-01",
+            name: "demo-prod-mysql",
+            type: "RDS",
+            status: "running",
+            region: "ap-northeast-2",
+            createdAt: "2024-01-05",
+            accountName: "Demo Production Account",
+          },
+          {
+            id: "i-abcdef1234567890",
+            name: "demo-dev-server-01",
+            type: "EC2",
+            status: "stopped",
+            region: "ap-northeast-2",
+            createdAt: "2024-01-20",
+            accountName: "Demo Development Account",
+          },
+          {
+            id: "db-demo-dev-01",
+            name: "demo-dev-postgres",
+            type: "RDS",
+            status: "running",
+            region: "ap-northeast-2",
+            createdAt: "2024-01-18",
+            accountName: "Demo Development Account",
+          },
+          {
+            id: "demo-bucket-prod",
+            name: "demo-production-assets",
+            type: "S3",
+            status: "running",
+            region: "ap-northeast-2",
+            createdAt: "2024-01-01",
+            accountName: "Demo Production Account",
+          },
+          {
+            id: "i-1234567890abcde0",
+            name: "demo-staging-server",
+            type: "EC2",
+            status: "pending",
+            region: "ap-northeast-2",
+            createdAt: "2024-01-22",
+            accountName: "Demo Staging Account",
+          },
+          {
+            id: "db-demo-staging-01",
+            name: "demo-staging-mysql",
+            type: "RDS",
+            status: "running",
+            region: "ap-northeast-2",
+            createdAt: "2024-01-21",
+            accountName: "Demo Staging Account",
+          },
+        ];
+
+        setResources(dummyResources);
+        setIsLoading(false);
+        return;
+      }
+
       // TODO: Fetch actual resources from connected AWS accounts
       // For now, show empty state since no resources are fetched yet
       setIsLoading(false);

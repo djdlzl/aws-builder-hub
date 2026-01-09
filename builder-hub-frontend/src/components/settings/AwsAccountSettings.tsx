@@ -78,6 +78,57 @@ export default function AwsAccountSettings() {
 
   const fetchAccounts = async () => {
     try {
+      // Check if admin_demo user is logged in
+      const isDemoAdmin =
+        localStorage.getItem("cloudforge_auth_token") ===
+        "mock-token-admin-demo";
+
+      if (isDemoAdmin) {
+        // Load dummy AWS accounts for admin_demo
+        const dummyAccounts: AwsAccount[] = [
+          {
+            id: 1,
+            accountId: "123456789012",
+            accountName: "Demo Production Account",
+            roleArn: "arn:aws:iam::123456789012:role/CloudForgeRole",
+            externalId: "demo-external-id-123",
+            description: "프로덕션 환경 AWS 계정",
+            status: "VERIFIED",
+            lastVerifiedAt: "2024-01-22T10:30:00Z",
+            createdAt: "2024-01-01T00:00:00Z",
+            updatedAt: "2024-01-22T10:30:00Z",
+          },
+          {
+            id: 2,
+            accountId: "210987654321",
+            accountName: "Demo Development Account",
+            roleArn: "arn:aws:iam::210987654321:role/CloudForgeRole",
+            externalId: "demo-external-id-456",
+            description: "개발 환경 AWS 계정",
+            status: "VERIFIED",
+            lastVerifiedAt: "2024-01-21T15:45:00Z",
+            createdAt: "2024-01-05T00:00:00Z",
+            updatedAt: "2024-01-21T15:45:00Z",
+          },
+          {
+            id: 3,
+            accountId: "345678901234",
+            accountName: "Demo Staging Account",
+            roleArn: "arn:aws:iam::345678901234:role/CloudForgeRole",
+            externalId: "demo-external-id-789",
+            description: "스테이징 환경 AWS 계정",
+            status: "VERIFIED",
+            lastVerifiedAt: "2024-01-20T09:15:00Z",
+            createdAt: "2024-01-10T00:00:00Z",
+            updatedAt: "2024-01-20T09:15:00Z",
+          },
+        ];
+
+        setAccounts(dummyAccounts);
+        setIsLoading(false);
+        return;
+      }
+
       const response = await fetch(
         buildApiUrl(API_CONFIG.ENDPOINTS.AWS_ACCOUNTS.LIST),
         { headers: getAuthHeaders() }
@@ -101,6 +152,21 @@ export default function AwsAccountSettings() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+
+    // Check if admin_demo user is logged in
+    const isDemoAdmin =
+      localStorage.getItem("cloudforge_auth_token") === "mock-token-admin-demo";
+
+    if (isDemoAdmin) {
+      // Simulate account addition for demo
+      toast({
+        title: "데모 모드",
+        description: "데모 모드에서는 계정을 추가할 수 없습니다.",
+        variant: "destructive",
+      });
+      setIsSubmitting(false);
+      return;
+    }
 
     try {
       const response = await fetch(
@@ -147,6 +213,23 @@ export default function AwsAccountSettings() {
 
   const handleVerify = async (id: number) => {
     setVerifyingId(id);
+
+    // Check if admin_demo user is logged in
+    const isDemoAdmin =
+      localStorage.getItem("cloudforge_auth_token") === "mock-token-admin-demo";
+
+    if (isDemoAdmin) {
+      // Simulate verification for demo
+      setTimeout(() => {
+        toast({
+          title: "데모 모드",
+          description: "데모 계정은 이미 검증되어 있습니다.",
+        });
+        setVerifyingId(null);
+      }, 1000);
+      return;
+    }
+
     try {
       const response = await fetch(
         buildApiUrl(API_CONFIG.ENDPOINTS.AWS_ACCOUNTS.VERIFY, {
@@ -185,6 +268,20 @@ export default function AwsAccountSettings() {
 
   const handleDelete = async (id: number) => {
     if (!confirm("정말로 이 AWS 계정을 삭제하시겠습니까?")) return;
+
+    // Check if admin_demo user is logged in
+    const isDemoAdmin =
+      localStorage.getItem("cloudforge_auth_token") === "mock-token-admin-demo";
+
+    if (isDemoAdmin) {
+      // Simulate deletion for demo
+      toast({
+        title: "데모 모드",
+        description: "데모 모드에서는 계정을 삭제할 수 없습니다.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     try {
       const response = await fetch(

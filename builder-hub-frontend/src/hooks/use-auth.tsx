@@ -122,7 +122,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         console.error("Login failed:", error);
         // Demo mode: allow mock login when backend is unavailable
-        if (email === "admin@cloudforge.io" && password === "password") {
+        if (email === "admin_demo" && password === "password") {
+          const mockUser: User = {
+            id: "3",
+            email: "admin_demo",
+            name: "Admin Demo",
+            role: "admin",
+          };
+          localStorage.setItem(AUTH_TOKEN_KEY, "mock-token-admin-demo");
+          setAuthState({
+            user: mockUser,
+            isAuthenticated: true,
+            isLoading: false,
+          });
+          return { success: true };
+        } else if (email === "admin@cloudforge.io" && password === "password") {
           const mockUser: User = {
             id: "1",
             email: "admin@cloudforge.io",
