@@ -1,0 +1,14 @@
+{
+  "folders": [
+	{
+		"path": "."
+	},
+	{
+		"path": "../aws-builder-hub-backend"
+	},
+	{
+		"path": "../../spoon-repo/series-profile-manager"
+	}
+],
+  "settings": {}
+}
