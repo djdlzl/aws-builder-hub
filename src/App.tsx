@@ -12,6 +12,7 @@ import Index from "./pages/Index";
 import EC2 from "./pages/EC2";
 import RDS from "./pages/RDS";
 import S3 from "./pages/S3";
+import VPC from "./pages/VPC";
 import Modules from "./pages/Modules";
 import Settings from "./pages/Settings";
 import Login from "./pages/Login";
@@ -31,13 +32,86 @@ const App = () => (
             <BrowserRouter>
               <Routes>
                 <Route path="/login" element={<Login />} />
-                <Route path="/" element={<ProtectedRoute><MainLayout><Index /></MainLayout></ProtectedRoute>} />
-                <Route path="/ec2" element={<ProtectedRoute><MainLayout><EC2 /></MainLayout></ProtectedRoute>} />
-                <Route path="/rds" element={<ProtectedRoute><MainLayout><RDS /></MainLayout></ProtectedRoute>} />
-                <Route path="/s3" element={<ProtectedRoute><MainLayout><S3 /></MainLayout></ProtectedRoute>} />
-                <Route path="/modules" element={<ProtectedRoute><MainLayout><Modules /></MainLayout></ProtectedRoute>} />
-                <Route path="/settings" element={<ProtectedRoute><MainLayout><Settings /></MainLayout></ProtectedRoute>} />
-                <Route path="/aws-accounts" element={<ProtectedRoute requiredRole="admin"><MainLayout><AWSAccounts /></MainLayout></ProtectedRoute>} />
+                <Route
+                  path="/"
+                  element={
+                    <ProtectedRoute>
+                      <MainLayout>
+                        <Index />
+                      </MainLayout>
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/ec2"
+                  element={
+                    <ProtectedRoute>
+                      <MainLayout>
+                        <EC2 />
+                      </MainLayout>
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/rds"
+                  element={
+                    <ProtectedRoute>
+                      <MainLayout>
+                        <RDS />
+                      </MainLayout>
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/s3"
+                  element={
+                    <ProtectedRoute>
+                      <MainLayout>
+                        <S3 />
+                      </MainLayout>
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/vpc"
+                  element={
+                    <ProtectedRoute>
+                      <MainLayout>
+                        <VPC />
+                      </MainLayout>
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/modules"
+                  element={
+                    <ProtectedRoute>
+                      <MainLayout>
+                        <Modules />
+                      </MainLayout>
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/settings"
+                  element={
+                    <ProtectedRoute>
+                      <MainLayout>
+                        <Settings />
+                      </MainLayout>
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/aws-accounts"
+                  element={
+                    <ProtectedRoute requiredRole="admin">
+                      <MainLayout>
+                        <AWSAccounts />
+                      </MainLayout>
+                    </ProtectedRoute>
+                  }
+                />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </BrowserRouter>

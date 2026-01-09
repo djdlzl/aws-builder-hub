@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,47 +19,27 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, RefreshCw, Trash2, CheckCircle, XCircle, Clock, Building2, Shield } from "lucide-react";
+import {
+  Plus,
+  RefreshCw,
+  Trash2,
+  CheckCircle,
+  XCircle,
+  Clock,
+  Building2,
+  Shield,
+  Loader2,
+  AlertCircle,
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AWSAccountConnection } from "@/types/auth";
 import { API_CONFIG, buildApiUrl } from "@/config/api";
 import { useAuth } from "@/hooks/use-auth";
-
-// Mock data for demo
-const mockAccounts: AWSAccountConnection[] = [
-  {
-    id: "1",
-    accountId: "123456789012",
-    accountName: "Production",
-    roleArn: "arn:aws:iam::123456789012:role/CloudForgeRole",
-    status: "connected",
-    lastVerified: "2024-01-15T10:30:00Z",
-    createdAt: "2024-01-01T00:00:00Z",
-    createdBy: "admin@cloudforge.io",
-  },
-  {
-    id: "2",
-    accountId: "234567890123",
-    accountName: "Staging",
-    roleArn: "arn:aws:iam::234567890123:role/CloudForgeRole",
-    status: "connected",
-    lastVerified: "2024-01-15T09:00:00Z",
-    createdAt: "2024-01-02T00:00:00Z",
-    createdBy: "admin@cloudforge.io",
-  },
-  {
-    id: "3",
-    accountId: "345678901234",
-    accountName: "Development",
-    roleArn: "arn:aws:iam::345678901234:role/CloudForgeRole",
-    status: "pending",
-    createdAt: "2024-01-10T00:00:00Z",
-    createdBy: "admin@cloudforge.io",
-  },
-];
+import { useAWSContext } from "@/hooks/use-aws-context";
 
 export default function AWSAccounts() {
-  const [accounts, setAccounts] = useState<AWSAccountConnection[]>(mockAccounts);
+  const [accounts, setAccounts] = useState<AWSAccountConnection[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isVerifying, setIsVerifying] = useState<string | null>(null);
   const [newAccount, setNewAccount] = useState({
@@ -70,9 +50,71 @@ export default function AWSAccounts() {
   });
   const { toast } = useToast();
   const { user } = useAuth();
+  const { refreshAccounts } = useAWSContext();
+
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem("access_token");
+    return {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    };
+  };
+
+  const fetchAccounts = async () => {
+    try {
+      const response = await fetch(
+        buildApiUrl(API_CONFIG.ENDPOINTS.AWS_ACCOUNTS.LIST),
+        { headers: getAuthHeaders() }
+      );
+      if (response.ok) {
+        const data = await response.json();
+        const accountList = (data.results || []).map(
+          (acc: {
+            id: number;
+            accountId: string;
+            accountName: string;
+            roleArn: string;
+            externalId?: string;
+            status: string;
+            lastVerifiedAt?: string;
+            createdAt: string;
+          }) => ({
+            id: String(acc.id),
+            accountId: acc.accountId,
+            accountName: acc.accountName,
+            roleArn: acc.roleArn,
+            externalId: acc.externalId,
+            status:
+              acc.status === "VERIFIED"
+                ? "connected"
+                : acc.status === "FAILED"
+                  ? "failed"
+                  : "pending",
+            lastVerified: acc.lastVerifiedAt,
+            createdAt: acc.createdAt,
+            createdBy: user?.email || "unknown",
+          })
+        );
+        setAccounts(accountList);
+      }
+    } catch (error) {
+      console.error("Failed to fetch accounts:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAccounts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleCreateAccount = async () => {
-    if (!newAccount.accountId || !newAccount.accountName || !newAccount.roleArn) {
+    if (
+      !newAccount.accountId ||
+      !newAccount.accountName ||
+      !newAccount.roleArn
+    ) {
       toast({
         title: "입력 오류",
         description: "필수 필드를 모두 입력해주세요.",
@@ -83,39 +125,49 @@ export default function AWSAccounts() {
 
     try {
       // In production, this would call the backend API
-      const response = await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.AWS_ACCOUNTS.CREATE), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('cloudforge_auth_token')}`,
-        },
-        body: JSON.stringify(newAccount),
-      });
+      const response = await fetch(
+        buildApiUrl(API_CONFIG.ENDPOINTS.AWS_ACCOUNTS.CREATE),
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem(
+              "cloudforge_auth_token"
+            )}`,
+          },
+          body: JSON.stringify(newAccount),
+        }
+      );
 
       if (response.ok) {
-        const createdAccount = await response.json();
-        setAccounts([...accounts, createdAccount]);
+        toast({
+          title: "계정 추가됨",
+          description: `${newAccount.accountName} 계정이 추가되었습니다. Assume Role 확인을 진행해주세요.`,
+        });
+        fetchAccounts();
+        refreshAccounts();
       } else {
-        throw new Error('Failed to create account');
+        const error = await response.json();
+        toast({
+          title: "오류",
+          description: error.message || "계정 추가에 실패했습니다.",
+          variant: "destructive",
+        });
       }
     } catch (error) {
-      // Demo mode: add mock account
-      const mockNewAccount: AWSAccountConnection = {
-        id: Date.now().toString(),
-        ...newAccount,
-        status: "pending",
-        createdAt: new Date().toISOString(),
-        createdBy: user?.email || "unknown",
-      };
-      setAccounts([...accounts, mockNewAccount]);
+      toast({
+        title: "연결 오류",
+        description: "서버에 연결할 수 없습니다.",
+        variant: "destructive",
+      });
     }
 
-    toast({
-      title: "계정 추가됨",
-      description: `${newAccount.accountName} 계정이 추가되었습니다. Assume Role 확인을 진행해주세요.`,
+    setNewAccount({
+      accountId: "",
+      accountName: "",
+      roleArn: "",
+      externalId: "",
     });
-
-    setNewAccount({ accountId: "", accountName: "", roleArn: "", externalId: "" });
     setIsDialogOpen(false);
   };
 
@@ -124,64 +176,97 @@ export default function AWSAccounts() {
 
     try {
       const response = await fetch(
-        buildApiUrl(API_CONFIG.ENDPOINTS.AWS_ACCOUNTS.VERIFY, { id: account.id }),
+        buildApiUrl(API_CONFIG.ENDPOINTS.AWS_ACCOUNTS.VERIFY, {
+          id: account.id,
+        }),
         {
-          method: 'POST',
+          method: "POST",
           headers: {
-            'Authorization': `Bearer ${localStorage.getItem('cloudforge_auth_token')}`,
+            Authorization: `Bearer ${localStorage.getItem(
+              "cloudforge_auth_token"
+            )}`,
           },
         }
       );
 
       if (response.ok) {
-        const result = await response.json();
-        setAccounts(accounts.map(a => 
-          a.id === account.id 
-            ? { ...a, status: result.success ? 'connected' : 'failed', lastVerified: new Date().toISOString() }
-            : a
-        ));
+        const data = await response.json();
+        const success = data.result?.success;
+        toast({
+          title: success ? "연결 확인 완료" : "연결 실패",
+          description: success
+            ? `${account.accountName} 계정의 Assume Role이 확인되었습니다.`
+            : data.result?.message || "IAM 설정을 확인해주세요.",
+          variant: success ? "default" : "destructive",
+        });
+        fetchAccounts();
+        refreshAccounts();
       } else {
-        throw new Error('Verification failed');
+        toast({
+          title: "검증 실패",
+          description: "계정 검증에 실패했습니다.",
+          variant: "destructive",
+        });
       }
     } catch (error) {
-      // Demo mode: simulate verification
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      const success = Math.random() > 0.3; // 70% success rate for demo
-      setAccounts(accounts.map(a => 
-        a.id === account.id 
-          ? { ...a, status: success ? 'connected' : 'failed', lastVerified: new Date().toISOString() }
-          : a
-      ));
-
       toast({
-        title: success ? "연결 확인 완료" : "연결 실패",
-        description: success 
-          ? `${account.accountName} 계정의 Assume Role이 확인되었습니다.`
-          : `${account.accountName} 계정의 Assume Role 확인에 실패했습니다. IAM 설정을 확인해주세요.`,
-        variant: success ? "default" : "destructive",
+        title: "연결 오류",
+        description: "서버에 연결할 수 없습니다.",
+        variant: "destructive",
       });
     }
 
     setIsVerifying(null);
   };
 
-  const handleDeleteAccount = (accountId: string) => {
-    setAccounts(accounts.filter(a => a.id !== accountId));
-    toast({
-      title: "계정 삭제됨",
-      description: "AWS 계정 연결이 삭제되었습니다.",
-    });
+  const handleDeleteAccount = async (accountId: string) => {
+    try {
+      const response = await fetch(
+        buildApiUrl(API_CONFIG.ENDPOINTS.AWS_ACCOUNTS.DELETE, {
+          id: accountId,
+        }),
+        {
+          method: "DELETE",
+          headers: getAuthHeaders(),
+        }
+      );
+      if (response.ok) {
+        toast({
+          title: "계정 삭제됨",
+          description: "AWS 계정 연결이 삭제되었습니다.",
+        });
+        fetchAccounts();
+        refreshAccounts();
+      }
+    } catch (error) {
+      toast({
+        title: "오류",
+        description: "삭제에 실패했습니다.",
+        variant: "destructive",
+      });
+    }
   };
 
-  const getStatusBadge = (status: AWSAccountConnection['status']) => {
+  const getStatusBadge = (status: AWSAccountConnection["status"]) => {
     switch (status) {
-      case 'connected':
-        return <Badge className="bg-green-500/10 text-green-500 border-green-500/20"><CheckCircle className="h-3 w-3 mr-1" /> 연결됨</Badge>;
-      case 'failed':
-        return <Badge variant="destructive"><XCircle className="h-3 w-3 mr-1" /> 실패</Badge>;
-      case 'pending':
-        return <Badge variant="secondary"><Clock className="h-3 w-3 mr-1" /> 대기중</Badge>;
+      case "connected":
+        return (
+          <Badge className="bg-green-500/10 text-green-500 border-green-500/20">
+            <CheckCircle className="h-3 w-3 mr-1" /> 연결됨
+          </Badge>
+        );
+      case "failed":
+        return (
+          <Badge variant="destructive">
+            <XCircle className="h-3 w-3 mr-1" /> 실패
+          </Badge>
+        );
+      case "pending":
+        return (
+          <Badge variant="secondary">
+            <Clock className="h-3 w-3 mr-1" /> 대기중
+          </Badge>
+        );
     }
   };
 
@@ -190,7 +275,9 @@ export default function AWSAccounts() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-foreground">AWS 계정 관리</h1>
-          <p className="text-muted-foreground mt-1">멀티 어카운트 환경을 위한 AWS 계정 연결 관리</p>
+          <p className="text-muted-foreground mt-1">
+            멀티 어카운트 환경을 위한 AWS 계정 연결 관리
+          </p>
         </div>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
@@ -213,7 +300,9 @@ export default function AWSAccounts() {
                   id="accountId"
                   placeholder="123456789012"
                   value={newAccount.accountId}
-                  onChange={(e) => setNewAccount({ ...newAccount, accountId: e.target.value })}
+                  onChange={(e) =>
+                    setNewAccount({ ...newAccount, accountId: e.target.value })
+                  }
                   maxLength={12}
                 />
               </div>
@@ -223,7 +312,12 @@ export default function AWSAccounts() {
                   id="accountName"
                   placeholder="Production"
                   value={newAccount.accountName}
-                  onChange={(e) => setNewAccount({ ...newAccount, accountName: e.target.value })}
+                  onChange={(e) =>
+                    setNewAccount({
+                      ...newAccount,
+                      accountName: e.target.value,
+                    })
+                  }
                 />
               </div>
               <div className="space-y-2">
@@ -232,17 +326,24 @@ export default function AWSAccounts() {
                   id="roleArn"
                   placeholder="arn:aws:iam::123456789012:role/CloudForgeRole"
                   value={newAccount.roleArn}
-                  onChange={(e) => setNewAccount({ ...newAccount, roleArn: e.target.value })}
+                  onChange={(e) =>
+                    setNewAccount({ ...newAccount, roleArn: e.target.value })
+                  }
                 />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="externalId">External ID (선택)</Label>
                 <Input
                   id="externalId"
-                  placeholder="외부 ID"
+                  placeholder="외부 ID (선택사항)"
                   value={newAccount.externalId}
-                  onChange={(e) => setNewAccount({ ...newAccount, externalId: e.target.value })}
+                  onChange={(e) =>
+                    setNewAccount({ ...newAccount, externalId: e.target.value })
+                  }
                 />
+                <p className="text-xs text-muted-foreground">
+                  추가 보안이 필요한 경우에만 사용하세요. 비워두면 External ID 없이 연결됩니다.
+                </p>
               </div>
 
               {/* IAM Policy Guide */}
@@ -255,7 +356,7 @@ export default function AWSAccounts() {
                   대상 계정에 다음 신뢰 정책을 가진 IAM Role을 생성해주세요:
                 </p>
                 <pre className="text-xs bg-background p-2 rounded border border-border overflow-x-auto">
-{`{
+                  {`{
   "Version": "2012-10-17",
   "Statement": [{
     "Effect": "Allow",
@@ -269,12 +370,13 @@ export default function AWSAccounts() {
               </div>
 
               <div className="flex justify-end gap-3 pt-4">
-                <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+                <Button
+                  variant="outline"
+                  onClick={() => setIsDialogOpen(false)}
+                >
                   취소
                 </Button>
-                <Button onClick={handleCreateAccount}>
-                  계정 추가
-                </Button>
+                <Button onClick={handleCreateAccount}>계정 추가</Button>
               </div>
             </div>
           </DialogContent>
@@ -296,13 +398,18 @@ export default function AWSAccounts() {
           </TableHeader>
           <TableBody>
             {accounts.map((account) => (
-              <TableRow key={account.id} className="border-border hover:bg-muted/50">
+              <TableRow
+                key={account.id}
+                className="border-border hover:bg-muted/50"
+              >
                 <TableCell>
                   <div className="flex items-center gap-2">
                     <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
                       <Building2 className="h-4 w-4 text-primary" />
                     </div>
-                    <span className="font-medium text-foreground">{account.accountName}</span>
+                    <span className="font-medium text-foreground">
+                      {account.accountName}
+                    </span>
                   </div>
                 </TableCell>
                 <TableCell className="font-mono text-sm text-muted-foreground">
@@ -313,9 +420,9 @@ export default function AWSAccounts() {
                 </TableCell>
                 <TableCell>{getStatusBadge(account.status)}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">
-                  {account.lastVerified 
-                    ? new Date(account.lastVerified).toLocaleString('ko-KR')
-                    : '-'}
+                  {account.lastVerified
+                    ? new Date(account.lastVerified).toLocaleString("ko-KR")
+                    : "-"}
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center justify-end gap-2">
@@ -325,7 +432,10 @@ export default function AWSAccounts() {
                       onClick={() => handleVerifyAccount(account)}
                       disabled={isVerifying === account.id}
                     >
-                      <RefreshCw className={`h-4 w-4 ${isVerifying === account.id ? 'animate-spin' : ''}`} />
+                      <RefreshCw
+                        className={`h-4 w-4 ${isVerifying === account.id ? "animate-spin" : ""
+                          }`}
+                      />
                     </Button>
                     <Button
                       variant="ghost"
@@ -345,24 +455,33 @@ export default function AWSAccounts() {
 
       {/* Info Card */}
       <div className="rounded-xl border border-border bg-card p-6">
-        <h3 className="text-lg font-semibold text-foreground mb-4">Assume Role 연동 방법</h3>
+        <h3 className="text-lg font-semibold text-foreground mb-4">
+          Assume Role 연동 방법
+        </h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="space-y-2">
-            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold">1</div>
+            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold">
+              1
+            </div>
             <h4 className="font-medium text-foreground">IAM Role 생성</h4>
             <p className="text-sm text-muted-foreground">
               대상 AWS 계정에 CloudForge가 사용할 IAM Role을 생성합니다.
             </p>
           </div>
           <div className="space-y-2">
-            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold">2</div>
+            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold">
+              2
+            </div>
             <h4 className="font-medium text-foreground">신뢰 정책 설정</h4>
             <p className="text-sm text-muted-foreground">
-              CloudForge 계정이 Role을 Assume할 수 있도록 신뢰 정책을 설정합니다.
+              CloudForge 계정이 Role을 Assume할 수 있도록 신뢰 정책을
+              설정합니다.
             </p>
           </div>
           <div className="space-y-2">
-            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold">3</div>
+            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold">
+              3
+            </div>
             <h4 className="font-medium text-foreground">연결 확인</h4>
             <p className="text-sm text-muted-foreground">
               계정을 추가하고 Assume Role 연결 확인을 진행합니다.

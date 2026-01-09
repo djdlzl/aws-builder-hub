@@ -1,4 +1,11 @@
-import { createContext, useContext, useState, ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  ReactNode,
+} from "react";
+import { API_CONFIG, buildApiUrl } from "@/config/api";
 
 interface AWSAccount {
   id: string;
@@ -19,13 +26,9 @@ interface AWSContextType {
   selectedRegion: AWSRegion | null;
   setSelectedAccount: (account: AWSAccount) => void;
   setSelectedRegion: (region: AWSRegion) => void;
+  refreshAccounts: () => Promise<void>;
+  isLoading: boolean;
 }
-
-const defaultAccounts: AWSAccount[] = [
-  { id: "1", name: "Production", accountId: "123456789012" },
-  { id: "2", name: "Staging", accountId: "234567890123" },
-  { id: "3", name: "Development", accountId: "345678901234" },
-];
 
 const defaultRegions: AWSRegion[] = [
   { id: "1", name: "Seoul", code: "ap-northeast-2" },
@@ -39,18 +42,89 @@ const defaultRegions: AWSRegion[] = [
 const AWSContext = createContext<AWSContextType | undefined>(undefined);
 
 export function AWSProvider({ children }: { children: ReactNode }) {
-  const [selectedAccount, setSelectedAccount] = useState<AWSAccount>(defaultAccounts[0]);
-  const [selectedRegion, setSelectedRegion] = useState<AWSRegion>(defaultRegions[0]);
+  const [accounts, setAccounts] = useState<AWSAccount[]>([]);
+  const [selectedAccount, setSelectedAccount] = useState<AWSAccount | null>(
+    null
+  );
+  const [selectedRegion, setSelectedRegion] = useState<AWSRegion>(
+    defaultRegions[0]
+  );
+  const [isLoading, setIsLoading] = useState(true);
+
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem("access_token");
+    return {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    };
+  };
+
+  const fetchVerifiedAccounts = async () => {
+    const token = localStorage.getItem("access_token");
+    if (!token) {
+      setAccounts([]);
+      setSelectedAccount(null);
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        buildApiUrl(API_CONFIG.ENDPOINTS.AWS_ACCOUNTS.VERIFIED),
+        { headers: getAuthHeaders() }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        const verifiedAccounts = (data.results || []).map(
+          (acc: { id: number; accountName: string; accountId: string }) => ({
+            id: String(acc.id),
+            name: acc.accountName,
+            accountId: acc.accountId,
+          })
+        );
+
+        setAccounts(verifiedAccounts);
+
+        if (verifiedAccounts.length > 0 && !selectedAccount) {
+          setSelectedAccount(verifiedAccounts[0]);
+        } else if (verifiedAccounts.length === 0) {
+          setSelectedAccount(null);
+        }
+      } else {
+        setAccounts([]);
+        setSelectedAccount(null);
+      }
+    } catch (error) {
+      console.error("Failed to fetch verified accounts:", error);
+      setAccounts([]);
+      setSelectedAccount(null);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchVerifiedAccounts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const refreshAccounts = async () => {
+    setIsLoading(true);
+    await fetchVerifiedAccounts();
+  };
 
   return (
     <AWSContext.Provider
       value={{
-        accounts: defaultAccounts,
+        accounts,
         regions: defaultRegions,
         selectedAccount,
         selectedRegion,
         setSelectedAccount,
         setSelectedRegion,
+        refreshAccounts,
+        isLoading,
       }}
     >
       {children}

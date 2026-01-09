@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -25,50 +25,75 @@ import {
   Search,
   MoreHorizontal,
   Upload,
-  Download,
-  Folder,
-  File,
   Layers,
   Lock,
   Globe,
-  Trash2,
+  Loader2,
+  AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ModulePreview } from "@/components/modules/ModulePreview";
+import { API_CONFIG, buildApiUrl } from "@/config/api";
+import { useAWSContext } from "@/hooks/use-aws-context";
 
 interface S3Bucket {
   name: string;
   region: string;
   createdAt: string;
-  access: "private" | "public";
-  objectCount: number;
-  size: string;
+  accountName?: string;
 }
-
-interface S3Object {
-  key: string;
-  type: "folder" | "file";
-  size?: string;
-  lastModified?: string;
-}
-
-const buckets: S3Bucket[] = [
-  { name: "prod-assets-bucket", region: "ap-northeast-2", createdAt: "2023-06-15", access: "private", objectCount: 15420, size: "125.3 GB" },
-  { name: "prod-logs-bucket", region: "ap-northeast-2", createdAt: "2023-06-15", access: "private", objectCount: 892156, size: "2.1 TB" },
-  { name: "static-website-bucket", region: "ap-northeast-2", createdAt: "2023-08-20", access: "public", objectCount: 234, size: "1.2 GB" },
-  { name: "backup-data-bucket", region: "ap-northeast-1", createdAt: "2023-04-10", access: "private", objectCount: 1523, size: "450 GB" },
-];
-
-const objects: S3Object[] = [
-  { key: "images/", type: "folder" },
-  { key: "documents/", type: "folder" },
-  { key: "backups/", type: "folder" },
-  { key: "config.json", type: "file", size: "2.4 KB", lastModified: "2024-01-15 10:30" },
-  { key: "data.csv", type: "file", size: "15.2 MB", lastModified: "2024-01-14 15:45" },
-  { key: "report.pdf", type: "file", size: "3.8 MB", lastModified: "2024-01-13 09:20" },
-];
 
 export default function S3() {
+  const [buckets, setBuckets] = useState<S3Bucket[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const { accounts } = useAWSContext();
+
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem("access_token");
+    return {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    };
+  };
+
+  useEffect(() => {
+    const fetchBuckets = async () => {
+      if (accounts.length === 0) {
+        setIsLoading(false);
+        return;
+      }
+      try {
+        const response = await fetch(
+          buildApiUrl(API_CONFIG.ENDPOINTS.AWS_RESOURCES.S3),
+          { headers: getAuthHeaders() }
+        );
+        if (response.ok) {
+          const data = await response.json();
+          const list = (data.results || []).map(
+            (b: {
+              name: string;
+              creationDate?: string;
+              region?: string;
+              accountName: string;
+            }) => ({
+              name: b.name,
+              region: b.region || "us-east-1",
+              createdAt: b.creationDate
+                ? new Date(b.creationDate).toLocaleDateString()
+                : "-",
+              accountName: b.accountName,
+            })
+          );
+          setBuckets(list);
+        }
+      } catch (error) {
+        console.error("Failed to fetch S3 buckets:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchBuckets();
+  }, [accounts]);
   const [createOpen, setCreateOpen] = useState(false);
   const [bucketName, setBucketName] = useState("");
   const [bucketRegion, setBucketRegion] = useState("");
@@ -102,7 +127,9 @@ export default function S3() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-foreground">S3 버킷</h1>
-          <p className="text-muted-foreground mt-1">오브젝트 스토리지 버킷을 관리합니다</p>
+          <p className="text-muted-foreground mt-1">
+            오브젝트 스토리지 버킷을 관리합니다
+          </p>
         </div>
 
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
@@ -114,7 +141,9 @@ export default function S3() {
           </DialogTrigger>
           <DialogContent className="sm:max-w-[600px] bg-card border-border">
             <DialogHeader>
-              <DialogTitle className="text-foreground">새 S3 버킷 생성</DialogTitle>
+              <DialogTitle className="text-foreground">
+                새 S3 버킷 생성
+              </DialogTitle>
               <DialogDescription className="text-muted-foreground">
                 새로운 S3 버킷을 생성합니다.
               </DialogDescription>
@@ -143,10 +172,18 @@ export default function S3() {
                       <SelectValue placeholder="리전 선택" />
                     </SelectTrigger>
                     <SelectContent className="bg-popover border-border">
-                      <SelectItem value="ap-northeast-2">Asia Pacific (Seoul)</SelectItem>
-                      <SelectItem value="ap-northeast-1">Asia Pacific (Tokyo)</SelectItem>
-                      <SelectItem value="us-east-1">US East (N. Virginia)</SelectItem>
-                      <SelectItem value="eu-west-1">Europe (Ireland)</SelectItem>
+                      <SelectItem value="ap-northeast-2">
+                        Asia Pacific (Seoul)
+                      </SelectItem>
+                      <SelectItem value="ap-northeast-1">
+                        Asia Pacific (Tokyo)
+                      </SelectItem>
+                      <SelectItem value="us-east-1">
+                        US East (N. Virginia)
+                      </SelectItem>
+                      <SelectItem value="eu-west-1">
+                        Europe (Ireland)
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -167,15 +204,24 @@ export default function S3() {
 
               <div className="grid gap-2">
                 <Label>모듈 적용</Label>
-                <Select value={selectedModule} onValueChange={setSelectedModule}>
+                <Select
+                  value={selectedModule}
+                  onValueChange={setSelectedModule}
+                >
                   <SelectTrigger className="bg-secondary border-border">
                     <SelectValue placeholder="모듈 선택 (선택사항)" />
                   </SelectTrigger>
                   <SelectContent className="bg-popover border-border">
-                    <SelectItem value="production-tags">production-tags</SelectItem>
+                    <SelectItem value="production-tags">
+                      production-tags
+                    </SelectItem>
                     <SelectItem value="staging-tags">staging-tags</SelectItem>
-                    <SelectItem value="s3-encryption-options">s3-encryption-options</SelectItem>
-                    <SelectItem value="s3-lifecycle-policy">s3-lifecycle-policy</SelectItem>
+                    <SelectItem value="s3-encryption-options">
+                      s3-encryption-options
+                    </SelectItem>
+                    <SelectItem value="s3-lifecycle-policy">
+                      s3-lifecycle-policy
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -210,135 +256,70 @@ export default function S3() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {buckets.map((bucket) => (
-              <div
-                key={bucket.name}
-                className="group relative overflow-hidden rounded-xl border border-border bg-card p-6 transition-all duration-300 hover:border-primary/50 hover:shadow-glow cursor-pointer"
-                onClick={() => setSelectedBucket(bucket.name)}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-lg bg-green-500/10 flex items-center justify-center">
-                      <Layers className="h-5 w-5 text-green-400" />
+          {buckets.length === 0 ? (
+            <div className="rounded-xl border border-border bg-card p-12 text-center">
+              <AlertCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+              <p className="text-muted-foreground">
+                표시할 S3 버킷이 없습니다.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {buckets.map((bucket) => (
+                <div
+                  key={bucket.name}
+                  className="group relative overflow-hidden rounded-xl border border-border bg-card p-6 transition-all duration-300 hover:border-primary/50 hover:shadow-glow cursor-pointer"
+                  onClick={() => setSelectedBucket(bucket.name)}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-lg bg-green-500/10 flex items-center justify-center">
+                        <Layers className="h-5 w-5 text-green-400" />
+                      </div>
+                      <div>
+                        <h4 className="font-semibold text-foreground">
+                          {bucket.name}
+                        </h4>
+                        <p className="text-sm text-muted-foreground">
+                          {bucket.region}
+                        </p>
+                      </div>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className="flex items-center gap-1"
+                    >
+                      <Lock className="h-3 w-3" />
+                      프라이빗
+                    </Badge>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <p className="text-muted-foreground">계정</p>
+                      <p className="font-medium text-foreground">
+                        {bucket.accountName}
+                      </p>
                     </div>
                     <div>
-                      <h4 className="font-semibold text-foreground">{bucket.name}</h4>
-                      <p className="text-sm text-muted-foreground">{bucket.region}</p>
+                      <p className="text-muted-foreground">생성일</p>
+                      <p className="font-medium text-foreground">
+                        {bucket.createdAt}
+                      </p>
                     </div>
                   </div>
-                  <Badge variant="outline" className="flex items-center gap-1">
-                    {bucket.access === "private" ? (
-                      <Lock className="h-3 w-3" />
-                    ) : (
-                      <Globe className="h-3 w-3" />
-                    )}
-                    {bucket.access === "private" ? "프라이빗" : "퍼블릭"}
-                  </Badge>
                 </div>
-
-                <div className="mt-4 grid grid-cols-3 gap-4 text-sm">
-                  <div>
-                    <p className="text-muted-foreground">객체 수</p>
-                    <p className="font-medium text-foreground">{bucket.objectCount.toLocaleString()}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">크기</p>
-                    <p className="font-medium text-foreground">{bucket.size}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">생성일</p>
-                    <p className="font-medium text-foreground">{bucket.createdAt}</p>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="browser" className="space-y-4">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <Select defaultValue={buckets[0].name}>
-                <SelectTrigger className="w-[250px] bg-secondary border-border">
-                  <SelectValue placeholder="버킷 선택" />
-                </SelectTrigger>
-                <SelectContent className="bg-popover border-border">
-                  {buckets.map((bucket) => (
-                    <SelectItem key={bucket.name} value={bucket.name}>
-                      {bucket.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <div className="relative flex-1 max-w-sm">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="파일 검색..."
-                  className="pl-10 bg-secondary border-border"
-                />
-              </div>
-            </div>
-            <Button onClick={handleUpload}>
-              <Upload className="h-4 w-4 mr-2" />
-              업로드
-            </Button>
-          </div>
-
-          <div className="rounded-xl border border-border bg-card overflow-hidden">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border bg-muted/30">
-                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">이름</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">유형</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">크기</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">수정일</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">액션</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {objects.map((obj) => (
-                  <tr key={obj.key} className="hover:bg-accent/50 transition-colors cursor-pointer">
-                    <td className="px-4 py-4">
-                      <div className="flex items-center gap-3">
-                        {obj.type === "folder" ? (
-                          <Folder className="h-5 w-5 text-yellow-400" />
-                        ) : (
-                          <File className="h-5 w-5 text-muted-foreground" />
-                        )}
-                        <span className="text-sm font-medium text-foreground">{obj.key}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-4">
-                      <Badge variant="outline" className="text-xs">
-                        {obj.type === "folder" ? "폴더" : "파일"}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-4">
-                      <span className="text-sm text-muted-foreground">{obj.size || "-"}</span>
-                    </td>
-                    <td className="px-4 py-4">
-                      <span className="text-sm text-muted-foreground">{obj.lastModified || "-"}</span>
-                    </td>
-                    <td className="px-4 py-4">
-                      <div className="flex items-center justify-end gap-1">
-                        {obj.type === "file" && (
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDownload(obj.key)}>
-                            <Download className="h-4 w-4" />
-                          </Button>
-                        )}
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="rounded-xl border border-border bg-card p-12 text-center">
+            <AlertCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+            <p className="text-muted-foreground">
+              파일 브라우저 기능은 준비 중입니다.
+            </p>
           </div>
         </TabsContent>
       </Tabs>

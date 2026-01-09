@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/use-auth";
-import { Cloud, Lock, Mail, AlertCircle } from "lucide-react";
+import { Cloud, Lock, User, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Login() {
@@ -12,7 +12,7 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   const { login, loginWithOkta } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -23,9 +23,9 @@ export default function Login() {
     setIsLoading(true);
 
     const result = await login(email, password);
-    
+
     setIsLoading(false);
-    
+
     if (result.success) {
       toast({
         title: "로그인 성공",
@@ -55,7 +55,9 @@ export default function Login() {
 
         {/* Login Card */}
         <div className="rounded-xl border border-border bg-card p-8 shadow-xl">
-          <h2 className="text-xl font-semibold text-foreground mb-6 text-center">로그인</h2>
+          <h2 className="text-xl font-semibold text-foreground mb-6 text-center">
+            로그인
+          </h2>
 
           {/* Error Alert */}
           {error && (
@@ -73,7 +75,7 @@ export default function Login() {
             onClick={handleOktaLogin}
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm0 18c-3.314 0-6-2.686-6-6s2.686-6 6-6 6 2.686 6 6-2.686 6-6 6z"/>
+              <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm0 18c-3.314 0-6-2.686-6-6s2.686-6 6-6 6 2.686 6 6-2.686 6-6 6z" />
             </svg>
             Okta로 로그인
           </Button>
@@ -87,16 +89,16 @@ export default function Login() {
             </div>
           </div>
 
-          {/* Email/Password Form */}
+          {/* ID/Password Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email">이메일</Label>
+              <Label htmlFor="email">아이디</Label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   id="email"
-                  type="email"
-                  placeholder="name@company.com"
+                  type="text"
+                  placeholder="아이디를 입력하세요"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="pl-10"
@@ -125,15 +127,6 @@ export default function Login() {
               {isLoading ? "로그인 중..." : "로그인"}
             </Button>
           </form>
-
-          {/* Demo Credentials */}
-          <div className="mt-6 p-4 rounded-lg bg-muted/50 border border-border">
-            <p className="text-xs text-muted-foreground mb-2 font-medium">데모 계정 (백엔드 미연결 시)</p>
-            <div className="space-y-1 text-xs text-muted-foreground font-mono">
-              <p>Admin: admin@cloudforge.io / password</p>
-              <p>Dev: dev@cloudforge.io / password</p>
-            </div>
-          </div>
         </div>
 
         {/* Footer */}

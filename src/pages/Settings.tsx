@@ -3,9 +3,11 @@ import { Label } from "@/components/ui/label";
 import { Moon, Sun, Monitor } from "lucide-react";
 import { useTheme } from "@/hooks/use-theme";
 import { cn } from "@/lib/utils";
+import SsoSettings from "@/components/settings/SsoSettings";
 
 export default function Settings() {
   const { theme, setTheme } = useTheme();
+  const isAdmin = localStorage.getItem("user_role") === "ADMIN";
 
   const themeOptions = [
     { value: "light" as const, label: "라이트", icon: Sun },
@@ -22,7 +24,9 @@ export default function Settings() {
 
       <div className="rounded-xl border border-border bg-card p-6 space-y-6">
         <div>
-          <h3 className="text-lg font-semibold text-foreground mb-4">테마 설정</h3>
+          <h3 className="text-lg font-semibold text-foreground mb-4">
+            테마 설정
+          </h3>
           <div className="space-y-3">
             <Label>테마 모드</Label>
             <div className="flex gap-3">
@@ -32,7 +36,8 @@ export default function Settings() {
                   variant="outline"
                   className={cn(
                     "flex-1 h-20 flex-col gap-2",
-                    theme === option.value && "border-primary bg-primary/10 text-primary"
+                    theme === option.value &&
+                      "border-primary bg-primary/10 text-primary"
                   )}
                   onClick={() => setTheme(option.value)}
                 >
@@ -43,14 +48,13 @@ export default function Settings() {
             </div>
           </div>
         </div>
-
-        <div className="border-t border-border pt-6">
-          <h3 className="text-lg font-semibold text-foreground mb-4">AWS 설정</h3>
-          <p className="text-sm text-muted-foreground">
-            멀티 어카운트 및 리전 설정은 상단 헤더에서 변경할 수 있습니다.
-          </p>
-        </div>
       </div>
+
+      {isAdmin && (
+        <div className="rounded-xl border border-border bg-card p-6">
+          <SsoSettings />
+        </div>
+      )}
     </div>
   );
 }
