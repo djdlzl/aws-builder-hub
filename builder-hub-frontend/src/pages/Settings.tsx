@@ -4,6 +4,7 @@ import { Moon, Sun, Monitor } from "lucide-react";
 import { useTheme } from "@/hooks/use-theme";
 import { cn } from "@/lib/utils";
 import SsoSettings from "@/components/settings/SsoSettings";
+import AwsAccountSettings from "@/components/settings/AwsAccountSettings";
 
 export default function Settings() {
   const { theme, setTheme } = useTheme();
@@ -51,9 +52,15 @@ export default function Settings() {
       </div>
 
       {isAdmin && (
-        <div className="rounded-xl border border-border bg-card p-6">
-          <SsoSettings />
-        </div>
+        <>
+          <div className="rounded-xl border border-border bg-card p-6">
+            <AwsAccountSettings />
+          </div>
+
+          <div className="rounded-xl border border-border bg-card p-6">
+            <SsoSettings />
+          </div>
+        </>
       )}
     </div>
   );

@@ -50,6 +50,47 @@ export default function Dashboard() {
   useEffect(() => {
     const fetchData = async () => {
       try {
+        // Check if admin_demo user is logged in
+        const isDemoAdmin =
+          localStorage.getItem("cloudforge_auth_token") ===
+          "mock-token-admin-demo";
+
+        if (isDemoAdmin) {
+          // Load dummy data for admin_demo
+          const dummyAccounts: AwsAccount[] = [
+            {
+              id: 1,
+              accountId: "123456789012",
+              accountName: "Demo Production Account",
+              status: "ACTIVE",
+            },
+            {
+              id: 2,
+              accountId: "210987654321",
+              accountName: "Demo Development Account",
+              status: "ACTIVE",
+            },
+            {
+              id: 3,
+              accountId: "345678901234",
+              accountName: "Demo Staging Account",
+              status: "ACTIVE",
+            },
+          ];
+
+          const dummyStats: DashboardStats = {
+            ec2Count: 15,
+            rdsCount: 8,
+            s3Count: 12,
+            accountCount: 3,
+          };
+
+          setAccounts(dummyAccounts);
+          setStats(dummyStats);
+          setIsLoading(false);
+          return;
+        }
+
         // Fetch AWS accounts (admin only)
         if (isAdmin) {
           const accountsRes = await fetch(
