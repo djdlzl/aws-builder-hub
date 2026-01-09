@@ -76,15 +76,12 @@ export default function EC2() {
 
   useEffect(() => {
     const fetchInstances = async () => {
-      if (accounts.length === 0) {
-        setIsLoading(false);
-        return;
-      }
-
-      // Check if admin_demo user is logged in
+      // Check if demo admin user is logged in
       const isDemoAdmin =
         localStorage.getItem("cloudforge_auth_token") ===
         "mock-token-admin-demo";
+      const isMockAdmin =
+        localStorage.getItem("cloudforge_auth_token") === "mock-token-admin";
 
       if (isDemoAdmin) {
         // Load dummy EC2 instances for admin_demo
@@ -184,6 +181,44 @@ export default function EC2() {
         return;
       }
 
+      if (isMockAdmin) {
+        // Load dummy EC2 instances for mock admin
+        const dummyInstances: EC2Instance[] = [
+          {
+            id: "i-1111111111111111",
+            name: "web-server-prod-01",
+            type: "t3.medium",
+            status: "running",
+            publicIp: "54.180.1.10",
+            privateIp: "10.0.1.10",
+            az: "ap-northeast-2a",
+            accountName: "Production Account",
+            region: "ap-northeast-2",
+          },
+          {
+            id: "i-2222222222222222",
+            name: "app-server-prod-01",
+            type: "t3.large",
+            status: "running",
+            publicIp: "54.180.1.11",
+            privateIp: "10.0.1.11",
+            az: "ap-northeast-2b",
+            accountName: "Production Account",
+            region: "ap-northeast-2",
+          },
+        ];
+
+        setInstances(dummyInstances);
+        setIsLoading(false);
+        return;
+      }
+
+      // For real users, check if they have accounts
+      if (accounts.length === 0) {
+        setIsLoading(false);
+        return;
+      }
+
       try {
         const response = await fetch(
           buildApiUrl(API_CONFIG.ENDPOINTS.AWS_RESOURCES.EC2),
@@ -249,7 +284,12 @@ export default function EC2() {
     );
   }
 
-  if (accounts.length === 0) {
+  // Check if demo or mock admin - they should see instances even with empty accounts from context
+  const isDemoOrMockAdmin =
+    localStorage.getItem("cloudforge_auth_token") === "mock-token-admin-demo" ||
+    localStorage.getItem("cloudforge_auth_token") === "mock-token-admin";
+
+  if (accounts.length === 0 && !isDemoOrMockAdmin) {
     return (
       <div className="space-y-6 animate-fade-in">
         <div>

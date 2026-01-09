@@ -82,6 +82,8 @@ export default function AwsAccountSettings() {
       const isDemoAdmin =
         localStorage.getItem("cloudforge_auth_token") ===
         "mock-token-admin-demo";
+      const isMockAdmin =
+        localStorage.getItem("cloudforge_auth_token") === "mock-token-admin";
 
       if (isDemoAdmin) {
         // Load dummy AWS accounts for admin_demo
@@ -129,6 +131,40 @@ export default function AwsAccountSettings() {
         return;
       }
 
+      if (isMockAdmin) {
+        // Load dummy AWS accounts for mock admin
+        const dummyAccounts: AwsAccount[] = [
+          {
+            id: 1,
+            accountId: "123456789012",
+            accountName: "Production Account",
+            roleArn: "arn:aws:iam::123456789012:role/CloudForgeRole",
+            externalId: "external-id-456",
+            description: "프로덕션 환경 AWS 계정",
+            status: "VERIFIED",
+            lastVerifiedAt: "2024-01-22T10:30:00Z",
+            createdAt: "2024-01-01T00:00:00Z",
+            updatedAt: "2024-01-22T10:30:00Z",
+          },
+          {
+            id: 2,
+            accountId: "210987654321",
+            accountName: "Development Account",
+            roleArn: "arn:aws:iam::210987654321:role/CloudForgeRole",
+            externalId: "external-id-789",
+            description: "개발 환경 AWS 계정",
+            status: "VERIFIED",
+            lastVerifiedAt: "2024-01-20T15:45:00Z",
+            createdAt: "2024-01-02T00:00:00Z",
+            updatedAt: "2024-01-20T15:45:00Z",
+          },
+        ];
+
+        setAccounts(dummyAccounts);
+        setIsLoading(false);
+        return;
+      }
+
       const response = await fetch(
         buildApiUrl(API_CONFIG.ENDPOINTS.AWS_ACCOUNTS.LIST),
         { headers: getAuthHeaders() }
@@ -153,15 +189,19 @@ export default function AwsAccountSettings() {
     e.preventDefault();
     setIsSubmitting(true);
 
-    // Check if admin_demo user is logged in
+    // Check if demo or mock admin user is logged in
     const isDemoAdmin =
       localStorage.getItem("cloudforge_auth_token") === "mock-token-admin-demo";
+    const isMockAdmin =
+      localStorage.getItem("cloudforge_auth_token") === "mock-token-admin";
 
-    if (isDemoAdmin) {
-      // Simulate account addition for demo
+    if (isDemoAdmin || isMockAdmin) {
+      // Simulate account addition for demo/mock
       toast({
-        title: "데모 모드",
-        description: "데모 모드에서는 계정을 추가할 수 없습니다.",
+        title: isDemoAdmin ? "데모 모드" : "목 모드",
+        description: isDemoAdmin
+          ? "데모 모드에서는 계정을 추가할 수 없습니다."
+          : "목 모드에서는 계정을 추가할 수 없습니다.",
         variant: "destructive",
       });
       setIsSubmitting(false);
@@ -214,16 +254,18 @@ export default function AwsAccountSettings() {
   const handleVerify = async (id: number) => {
     setVerifyingId(id);
 
-    // Check if admin_demo user is logged in
+    // Check if demo or mock admin user is logged in
     const isDemoAdmin =
       localStorage.getItem("cloudforge_auth_token") === "mock-token-admin-demo";
+    const isMockAdmin =
+      localStorage.getItem("cloudforge_auth_token") === "mock-token-admin";
 
-    if (isDemoAdmin) {
-      // Simulate verification for demo
+    if (isDemoAdmin || isMockAdmin) {
+      // Simulate verification for demo/mock
       setTimeout(() => {
         toast({
-          title: "데모 모드",
-          description: "데모 계정은 이미 검증되어 있습니다.",
+          title: isDemoAdmin ? "데모 모드" : "목 모드",
+          description: "계정은 이미 검증되어 있습니다.",
         });
         setVerifyingId(null);
       }, 1000);
@@ -269,15 +311,19 @@ export default function AwsAccountSettings() {
   const handleDelete = async (id: number) => {
     if (!confirm("정말로 이 AWS 계정을 삭제하시겠습니까?")) return;
 
-    // Check if admin_demo user is logged in
+    // Check if demo or mock admin user is logged in
     const isDemoAdmin =
       localStorage.getItem("cloudforge_auth_token") === "mock-token-admin-demo";
+    const isMockAdmin =
+      localStorage.getItem("cloudforge_auth_token") === "mock-token-admin";
 
-    if (isDemoAdmin) {
-      // Simulate deletion for demo
+    if (isDemoAdmin || isMockAdmin) {
+      // Simulate deletion for demo/mock
       toast({
-        title: "데모 모드",
-        description: "데모 모드에서는 계정을 삭제할 수 없습니다.",
+        title: isDemoAdmin ? "데모 모드" : "목 모드",
+        description: isDemoAdmin
+          ? "데모 모드에서는 계정을 삭제할 수 없습니다."
+          : "목 모드에서는 계정을 삭제할 수 없습니다.",
         variant: "destructive",
       });
       return;

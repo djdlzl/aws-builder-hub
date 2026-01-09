@@ -58,15 +58,12 @@ export function ResourceTable({ accounts = [] }: ResourceTableProps) {
 
   useEffect(() => {
     const fetchResources = async () => {
-      if (accounts.length === 0) {
-        setIsLoading(false);
-        return;
-      }
-
       // Check if admin_demo user is logged in
       const isDemoAdmin =
         localStorage.getItem("cloudforge_auth_token") ===
         "mock-token-admin-demo";
+      const isMockAdmin =
+        localStorage.getItem("cloudforge_auth_token") === "mock-token-admin";
 
       if (isDemoAdmin) {
         // Load dummy resources for admin_demo
@@ -142,6 +139,52 @@ export function ResourceTable({ accounts = [] }: ResourceTableProps) {
             region: "ap-northeast-2",
             createdAt: "2024-01-21",
             accountName: "Demo Staging Account",
+          },
+        ];
+
+        setResources(dummyResources);
+        setIsLoading(false);
+        return;
+      }
+
+      if (isMockAdmin) {
+        // Load dummy resources for mock admin
+        const dummyResources: Resource[] = [
+          {
+            id: "i-1111111111111111",
+            name: "web-server-prod-01",
+            type: "EC2",
+            status: "running",
+            region: "ap-northeast-2",
+            createdAt: "2024-01-15",
+            accountName: "Production Account",
+          },
+          {
+            id: "i-2222222222222222",
+            name: "app-server-prod-01",
+            type: "EC2",
+            status: "running",
+            region: "ap-northeast-2",
+            createdAt: "2024-01-10",
+            accountName: "Production Account",
+          },
+          {
+            id: "db-prod-mysql-01",
+            name: "prod-mysql-master",
+            type: "RDS",
+            status: "running",
+            region: "ap-northeast-2",
+            createdAt: "2024-01-05",
+            accountName: "Production Account",
+          },
+          {
+            id: "s3-prod-bucket-01",
+            name: "prod-static-assets",
+            type: "S3",
+            status: "running",
+            region: "ap-northeast-2",
+            createdAt: "2024-01-01",
+            accountName: "Production Account",
           },
         ];
 

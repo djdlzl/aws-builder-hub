@@ -68,6 +68,38 @@ export function AWSProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    // Check if admin_demo user is logged in
+    const isDemoAdmin =
+      localStorage.getItem("cloudforge_auth_token") === "mock-token-admin-demo";
+    const isMockAdmin =
+      localStorage.getItem("cloudforge_auth_token") === "mock-token-admin";
+
+    if (isDemoAdmin) {
+      // Load dummy AWS accounts for admin_demo
+      const dummyAccounts: AWSAccount[] = [
+        {
+          id: "1",
+          name: "Demo Production Account",
+          accountId: "123456789012",
+        },
+        {
+          id: "2",
+          name: "Demo Development Account",
+          accountId: "210987654321",
+        },
+        {
+          id: "3",
+          name: "Demo Staging Account",
+          accountId: "345678901234",
+        },
+      ];
+
+      setAccounts(dummyAccounts);
+      setSelectedAccount(dummyAccounts[0]);
+      setIsLoading(false);
+      return;
+    }
+
     try {
       const response = await fetch(
         buildApiUrl(API_CONFIG.ENDPOINTS.AWS_ACCOUNTS.VERIFIED),

@@ -48,49 +48,81 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    const fetchData = async () => {
+    const checkAuth = async () => {
+      const token = localStorage.getItem("access_token");
+      const isDemoAdmin =
+        localStorage.getItem("cloudforge_auth_token") ===
+        "mock-token-admin-demo";
+      const isMockAdmin =
+        localStorage.getItem("cloudforge_auth_token") === "mock-token-admin";
+
+      if (isDemoAdmin) {
+        // Load dummy data for admin_demo
+        const dummyAccounts: AwsAccount[] = [
+          {
+            id: 1,
+            accountId: "123456789012",
+            accountName: "Demo Production Account",
+            status: "ACTIVE",
+          },
+          {
+            id: 2,
+            accountId: "210987654321",
+            accountName: "Demo Development Account",
+            status: "ACTIVE",
+          },
+          {
+            id: 3,
+            accountId: "345678901234",
+            accountName: "Demo Staging Account",
+            status: "ACTIVE",
+          },
+        ];
+
+        const dummyStats: DashboardStats = {
+          ec2Count: 15,
+          rdsCount: 8,
+          s3Count: 12,
+          accountCount: 3,
+        };
+
+        setAccounts(dummyAccounts);
+        setStats(dummyStats);
+        setIsLoading(false);
+        return;
+      }
+
+      if (isMockAdmin) {
+        // Load dummy data for mock admin
+        const dummyAccounts: AwsAccount[] = [
+          {
+            id: 1,
+            accountId: "123456789012",
+            accountName: "Production Account",
+            status: "ACTIVE",
+          },
+          {
+            id: 2,
+            accountId: "210987654321",
+            accountName: "Development Account",
+            status: "ACTIVE",
+          },
+        ];
+
+        const dummyStats: DashboardStats = {
+          ec2Count: 8,
+          rdsCount: 4,
+          s3Count: 6,
+          accountCount: 2,
+        };
+
+        setAccounts(dummyAccounts);
+        setStats(dummyStats);
+        setIsLoading(false);
+        return;
+      }
+
       try {
-        // Check if admin_demo user is logged in
-        const isDemoAdmin =
-          localStorage.getItem("cloudforge_auth_token") ===
-          "mock-token-admin-demo";
-
-        if (isDemoAdmin) {
-          // Load dummy data for admin_demo
-          const dummyAccounts: AwsAccount[] = [
-            {
-              id: 1,
-              accountId: "123456789012",
-              accountName: "Demo Production Account",
-              status: "ACTIVE",
-            },
-            {
-              id: 2,
-              accountId: "210987654321",
-              accountName: "Demo Development Account",
-              status: "ACTIVE",
-            },
-            {
-              id: 3,
-              accountId: "345678901234",
-              accountName: "Demo Staging Account",
-              status: "ACTIVE",
-            },
-          ];
-
-          const dummyStats: DashboardStats = {
-            ec2Count: 15,
-            rdsCount: 8,
-            s3Count: 12,
-            accountCount: 3,
-          };
-
-          setAccounts(dummyAccounts);
-          setStats(dummyStats);
-          setIsLoading(false);
-          return;
-        }
-
         // Fetch AWS accounts (admin only)
         if (isAdmin) {
           const accountsRes = await fetch(
@@ -111,7 +143,7 @@ export default function Dashboard() {
       }
     };
 
-    fetchData();
+    checkAuth();
   }, [isAdmin]);
 
   const hasConnectedAccounts = accounts.length > 0;
