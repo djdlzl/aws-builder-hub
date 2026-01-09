@@ -20,6 +20,18 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import {
   Plus,
   Server,
   Play,
@@ -29,11 +41,15 @@ import {
   Search,
   Loader2,
   AlertCircle,
+  CalendarIcon,
+  Clock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ModulePreview } from "@/components/modules/ModulePreview";
 import { API_CONFIG, buildApiUrl } from "@/config/api";
 import { useAWSContext } from "@/hooks/use-aws-context";
+import { format } from "date-fns";
+import { ko } from "date-fns/locale";
 
 interface EC2Instance {
   id: string;
@@ -45,6 +61,7 @@ interface EC2Instance {
   az: string;
   accountName?: string;
   region?: string;
+  scheduledStopDate?: Date;
 }
 
 const statusStyles: Record<string, string> = {
@@ -263,6 +280,12 @@ export default function EC2() {
   const [instanceName, setInstanceName] = useState("");
   const [instanceType, setInstanceType] = useState("");
   const [selectedModule, setSelectedModule] = useState("");
+  
+  // Stop schedule dialog state
+  const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
+  const [selectedInstance, setSelectedInstance] = useState<EC2Instance | null>(null);
+  const [scheduledDate, setScheduledDate] = useState<Date | undefined>(undefined);
+  const [scheduledTime, setScheduledTime] = useState("18:00");
 
   const handleCreate = () => {
     if (!instanceName || !instanceType) {
@@ -274,6 +297,46 @@ export default function EC2() {
     setInstanceName("");
     setInstanceType("");
     setSelectedModule("");
+  };
+
+  const handleScheduleStop = (instance: EC2Instance) => {
+    setSelectedInstance(instance);
+    setScheduledDate(instance.scheduledStopDate || undefined);
+    setScheduleDialogOpen(true);
+  };
+
+  const handleSaveSchedule = () => {
+    if (!scheduledDate || !selectedInstance) {
+      toast.error("날짜를 선택해주세요.");
+      return;
+    }
+    
+    // Update instance with scheduled stop date
+    setInstances(prev => prev.map(inst => 
+      inst.id === selectedInstance.id 
+        ? { ...inst, scheduledStopDate: scheduledDate }
+        : inst
+    ));
+    
+    toast.success(`${selectedInstance.name} 인스턴스의 Stop 예정일이 설정되었습니다.`);
+    setScheduleDialogOpen(false);
+    setSelectedInstance(null);
+    setScheduledDate(undefined);
+  };
+
+  const handleCancelSchedule = () => {
+    if (!selectedInstance) return;
+    
+    setInstances(prev => prev.map(inst => 
+      inst.id === selectedInstance.id 
+        ? { ...inst, scheduledStopDate: undefined }
+        : inst
+    ));
+    
+    toast.success(`${selectedInstance.name} 인스턴스의 Stop 예정이 취소되었습니다.`);
+    setScheduleDialogOpen(false);
+    setSelectedInstance(null);
+    setScheduledDate(undefined);
   };
 
   if (isLoading) {
@@ -503,6 +566,12 @@ export default function EC2() {
                 </td>
                 <td className="px-4 py-4">
                   <div className="flex items-center justify-end gap-1">
+                    {instance.scheduledStopDate && (
+                      <Badge variant="outline" className="mr-2 text-xs bg-warning/10 text-warning border-warning/20">
+                        <Clock className="h-3 w-3 mr-1" />
+                        {format(instance.scheduledStopDate, "MM/dd HH:mm")}
+                      </Badge>
+                    )}
                     {instance.status === "stopped" ? (
                       <Button
                         variant="ghost"
@@ -523,9 +592,19 @@ export default function EC2() {
                     <Button variant="ghost" size="icon" className="h-8 w-8">
                       <RotateCcw className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8">
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="bg-popover border-border">
+                        <DropdownMenuItem onClick={() => handleScheduleStop(instance)}>
+                          <CalendarIcon className="h-4 w-4 mr-2" />
+                          Stop 예정일 설정
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </td>
               </tr>
@@ -533,6 +612,83 @@ export default function EC2() {
           </tbody>
         </table>
       </div>
+
+      {/* Stop 예정일 설정 Dialog */}
+      <Dialog open={scheduleDialogOpen} onOpenChange={setScheduleDialogOpen}>
+        <DialogContent className="sm:max-w-[400px] bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-foreground">Stop 예정일 설정</DialogTitle>
+            <DialogDescription className="text-muted-foreground">
+              {selectedInstance?.name} 인스턴스의 자동 중지 예정일을 설정합니다.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label>예정 날짜</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start text-left font-normal bg-secondary border-border"
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {scheduledDate ? format(scheduledDate, "PPP", { locale: ko }) : "날짜 선택"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0 bg-popover border-border" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={scheduledDate}
+                    onSelect={setScheduledDate}
+                    initialFocus
+                    disabled={(date) => date < new Date()}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            <div className="grid gap-2">
+              <Label>예정 시간</Label>
+              <Select value={scheduledTime} onValueChange={setScheduledTime}>
+                <SelectTrigger className="bg-secondary border-border">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-popover border-border max-h-48">
+                  {Array.from({ length: 24 }, (_, i) => {
+                    const hour = i.toString().padStart(2, "0");
+                    return (
+                      <SelectItem key={hour} value={`${hour}:00`}>
+                        {hour}:00
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {selectedInstance?.scheduledStopDate && (
+              <div className="p-3 rounded-lg bg-warning/10 border border-warning/20">
+                <p className="text-sm text-warning">
+                  현재 설정된 예정일: {format(selectedInstance.scheduledStopDate, "PPP p", { locale: ko })}
+                </p>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2">
+            {selectedInstance?.scheduledStopDate && (
+              <Button variant="destructive" onClick={handleCancelSchedule}>
+                예정 취소
+              </Button>
+            )}
+            <Button variant="outline" onClick={() => setScheduleDialogOpen(false)}>
+              닫기
+            </Button>
+            <Button onClick={handleSaveSchedule}>저장</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
