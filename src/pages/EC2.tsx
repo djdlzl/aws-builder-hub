@@ -43,7 +43,9 @@ import {
   AlertCircle,
   CalendarIcon,
   Clock,
+  Terminal,
 } from "lucide-react";
+import { TerminalDialog } from "@/components/terminal/TerminalDialog";
 import { toast } from "sonner";
 import { ModulePreview } from "@/components/modules/ModulePreview";
 import { API_CONFIG, buildApiUrl } from "@/config/api";
@@ -286,6 +288,15 @@ export default function EC2() {
   const [selectedInstance, setSelectedInstance] = useState<EC2Instance | null>(null);
   const [scheduledDate, setScheduledDate] = useState<Date | undefined>(undefined);
   const [scheduledTime, setScheduledTime] = useState("18:00");
+
+  // Terminal dialog state
+  const [terminalOpen, setTerminalOpen] = useState(false);
+  const [terminalInstance, setTerminalInstance] = useState<EC2Instance | null>(null);
+
+  const handleOpenTerminal = (instance: EC2Instance) => {
+    setTerminalInstance(instance);
+    setTerminalOpen(true);
+  };
 
   const handleCreate = () => {
     if (!instanceName || !instanceType) {
@@ -599,6 +610,13 @@ export default function EC2() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="bg-popover border-border">
+                        <DropdownMenuItem 
+                          onClick={() => handleOpenTerminal(instance)}
+                          disabled={instance.status !== "running"}
+                        >
+                          <Terminal className="h-4 w-4 mr-2" />
+                          터미널 (SSM)
+                        </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleScheduleStop(instance)}>
                           <CalendarIcon className="h-4 w-4 mr-2" />
                           Stop 예정일 설정
@@ -612,6 +630,16 @@ export default function EC2() {
           </tbody>
         </table>
       </div>
+
+      {/* Terminal Dialog */}
+      {terminalInstance && (
+        <TerminalDialog
+          open={terminalOpen}
+          onOpenChange={setTerminalOpen}
+          instanceId={terminalInstance.id}
+          instanceName={terminalInstance.name}
+        />
+      )}
 
       {/* Stop 예정일 설정 Dialog */}
       <Dialog open={scheduleDialogOpen} onOpenChange={setScheduleDialogOpen}>
