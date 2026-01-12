@@ -45,7 +45,7 @@ import {
   Clock,
   Terminal,
 } from "lucide-react";
-import { TerminalDialog } from "@/components/terminal/TerminalDialog";
+import { SSMTerminal } from "@/components/terminal/SSMTerminal";
 import { toast } from "sonner";
 import { ModulePreview } from "@/components/modules/ModulePreview";
 import { API_CONFIG, buildApiUrl } from "@/config/api";
@@ -289,13 +289,20 @@ export default function EC2() {
   const [scheduledDate, setScheduledDate] = useState<Date | undefined>(undefined);
   const [scheduledTime, setScheduledTime] = useState("18:00");
 
-  // Terminal dialog state
-  const [terminalOpen, setTerminalOpen] = useState(false);
-  const [terminalInstance, setTerminalInstance] = useState<EC2Instance | null>(null);
+  // Terminal expandable state - tracks which instance has terminal open
+  const [expandedTerminalId, setExpandedTerminalId] = useState<string | null>(null);
 
   const handleOpenTerminal = (instance: EC2Instance) => {
-    setTerminalInstance(instance);
-    setTerminalOpen(true);
+    // Toggle terminal - if same instance clicked, close it
+    if (expandedTerminalId === instance.id) {
+      setExpandedTerminalId(null);
+    } else {
+      setExpandedTerminalId(instance.id);
+    }
+  };
+
+  const handleCloseTerminal = () => {
+    setExpandedTerminalId(null);
   };
 
   const handleCreate = () => {
@@ -531,115 +538,125 @@ export default function EC2() {
           </thead>
           <tbody className="divide-y divide-border">
             {instances.map((instance) => (
-              <tr
-                key={instance.id}
-                className="hover:bg-accent/50 transition-colors"
-              >
-                <td className="px-4 py-4">
-                  <div className="flex items-center gap-3">
-                    <div className="h-9 w-9 rounded-lg bg-orange-500/10 flex items-center justify-center">
-                      <Server className="h-4 w-4 text-orange-400" />
+              <>
+                <tr
+                  key={instance.id}
+                  className={`hover:bg-accent/50 transition-colors ${expandedTerminalId === instance.id ? "bg-accent/30" : ""}`}
+                >
+                  <td className="px-4 py-4">
+                    <div className="flex items-center gap-3">
+                      <div className="h-9 w-9 rounded-lg bg-orange-500/10 flex items-center justify-center">
+                        <Server className="h-4 w-4 text-orange-400" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-foreground">
+                          {instance.name}
+                        </p>
+                        <code className="text-xs font-mono text-muted-foreground">
+                          {instance.id}
+                        </code>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm font-medium text-foreground">
-                        {instance.name}
-                      </p>
-                      <code className="text-xs font-mono text-muted-foreground">
-                        {instance.id}
-                      </code>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-4 py-4">
-                  <Badge variant="outline" className="font-mono text-xs">
-                    {instance.type}
-                  </Badge>
-                </td>
-                <td className="px-4 py-4">
-                  <Badge className={statusStyles[instance.status]}>
-                    {statusLabels[instance.status]}
-                  </Badge>
-                </td>
-                <td className="px-4 py-4">
-                  <code className="text-sm font-mono text-foreground">
-                    {instance.publicIp}
-                  </code>
-                </td>
-                <td className="px-4 py-4">
-                  <code className="text-sm font-mono text-muted-foreground">
-                    {instance.privateIp}
-                  </code>
-                </td>
-                <td className="px-4 py-4">
-                  <span className="text-sm text-muted-foreground">
-                    {instance.az}
-                  </span>
-                </td>
-                <td className="px-4 py-4">
-                  <div className="flex items-center justify-end gap-1">
-                    {instance.scheduledStopDate && (
-                      <Badge variant="outline" className="mr-2 text-xs bg-warning/10 text-warning border-warning/20">
-                        <Clock className="h-3 w-3 mr-1" />
-                        {format(instance.scheduledStopDate, "MM/dd HH:mm")}
-                      </Badge>
-                    )}
-                    {instance.status === "stopped" ? (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-success hover:text-success"
-                      >
-                        <Play className="h-4 w-4" />
-                      </Button>
-                    ) : (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-warning hover:text-warning"
-                      >
-                        <Square className="h-4 w-4" />
-                      </Button>
-                    )}
-                    <Button variant="ghost" size="icon" className="h-8 w-8">
-                      <RotateCcw className="h-4 w-4" />
-                    </Button>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="bg-popover border-border">
-                        <DropdownMenuItem 
-                          onClick={() => handleOpenTerminal(instance)}
-                          disabled={instance.status !== "running"}
+                  </td>
+                  <td className="px-4 py-4">
+                    <Badge variant="outline" className="font-mono text-xs">
+                      {instance.type}
+                    </Badge>
+                  </td>
+                  <td className="px-4 py-4">
+                    <Badge className={statusStyles[instance.status]}>
+                      {statusLabels[instance.status]}
+                    </Badge>
+                  </td>
+                  <td className="px-4 py-4">
+                    <code className="text-sm font-mono text-foreground">
+                      {instance.publicIp}
+                    </code>
+                  </td>
+                  <td className="px-4 py-4">
+                    <code className="text-sm font-mono text-muted-foreground">
+                      {instance.privateIp}
+                    </code>
+                  </td>
+                  <td className="px-4 py-4">
+                    <span className="text-sm text-muted-foreground">
+                      {instance.az}
+                    </span>
+                  </td>
+                  <td className="px-4 py-4">
+                    <div className="flex items-center justify-end gap-1">
+                      {instance.scheduledStopDate && (
+                        <Badge variant="outline" className="mr-2 text-xs bg-warning/10 text-warning border-warning/20">
+                          <Clock className="h-3 w-3 mr-1" />
+                          {format(instance.scheduledStopDate, "MM/dd HH:mm")}
+                        </Badge>
+                      )}
+                      {instance.status === "stopped" ? (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-success hover:text-success"
                         >
-                          <Terminal className="h-4 w-4 mr-2" />
-                          터미널 (SSM)
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleScheduleStop(instance)}>
-                          <CalendarIcon className="h-4 w-4 mr-2" />
-                          Stop 예정일 설정
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </td>
-              </tr>
+                          <Play className="h-4 w-4" />
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-warning hover:text-warning"
+                        >
+                          <Square className="h-4 w-4" />
+                        </Button>
+                      )}
+                      <Button variant="ghost" size="icon" className="h-8 w-8">
+                        <RotateCcw className="h-4 w-4" />
+                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="bg-popover border-border">
+                          <DropdownMenuItem 
+                            onClick={() => handleOpenTerminal(instance)}
+                            disabled={instance.status !== "running"}
+                          >
+                            <Terminal className="h-4 w-4 mr-2" />
+                            {expandedTerminalId === instance.id ? "터미널 닫기" : "터미널 (SSM)"}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleScheduleStop(instance)}>
+                            <CalendarIcon className="h-4 w-4 mr-2" />
+                            Stop 예정일 설정
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </td>
+                </tr>
+                {/* Expandable Terminal Row */}
+                {expandedTerminalId === instance.id && (
+                  <tr key={`${instance.id}-terminal`}>
+                    <td colSpan={7} className="p-0">
+                      <div 
+                        className="border-t border-border bg-background animate-in slide-in-from-top-2 duration-200"
+                        style={{ height: "350px" }}
+                      >
+                        <SSMTerminal
+                          instanceId={instance.id}
+                          instanceName={instance.name}
+                          onClose={handleCloseTerminal}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </>
             ))}
           </tbody>
         </table>
       </div>
 
-      {/* Terminal Dialog */}
-      {terminalInstance && (
-        <TerminalDialog
-          open={terminalOpen}
-          onOpenChange={setTerminalOpen}
-          instanceId={terminalInstance.id}
-          instanceName={terminalInstance.name}
-        />
-      )}
 
       {/* Stop 예정일 설정 Dialog */}
       <Dialog open={scheduleDialogOpen} onOpenChange={setScheduleDialogOpen}>
