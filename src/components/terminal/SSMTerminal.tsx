@@ -207,9 +207,17 @@ export function SSMTerminal({ instanceId, instanceName, onClose }: SSMTerminalPr
             ({instanceId})
           </span>
         </div>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          {isConnecting && <span>연결 중...</span>}
-          {isConnected && <span className="text-success">연결됨</span>}
+        <div className="flex items-center gap-2">
+          {isConnecting && <span className="text-xs text-muted-foreground">연결 중...</span>}
+          {isConnected && <span className="text-xs text-success">연결됨</span>}
+          {onClose && (
+            <button 
+              onClick={onClose}
+              className="ml-2 text-muted-foreground hover:text-foreground transition-colors text-sm px-2 py-1 rounded hover:bg-muted"
+            >
+              ✕ 닫기
+            </button>
+          )}
         </div>
       </div>
 
