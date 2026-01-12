@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { Terminal } from "xterm";
+import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
-import "xterm/css/xterm.css";
+import "@xterm/xterm/css/xterm.css";
 
 interface SSMTerminalProps {
   instanceId: string;
@@ -10,7 +10,11 @@ interface SSMTerminalProps {
   onClose?: () => void;
 }
 
-export function SSMTerminal({ instanceId, instanceName, onClose }: SSMTerminalProps) {
+export function SSMTerminal({
+  instanceId,
+  instanceName,
+  onClose,
+}: SSMTerminalProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -54,7 +58,7 @@ export function SSMTerminal({ instanceId, instanceName, onClose }: SSMTerminalPr
 
     const fitAddon = new FitAddon();
     const webLinksAddon = new WebLinksAddon();
-    
+
     term.loadAddon(fitAddon);
     term.loadAddon(webLinksAddon);
     term.open(terminalRef.current);
@@ -82,12 +86,24 @@ export function SSMTerminal({ instanceId, instanceName, onClose }: SSMTerminalPr
     };
   }, [instanceId, instanceName]);
 
-  const simulateSSMConnection = (term: Terminal, instId: string, instName: string) => {
-    term.writeln("\x1b[1;34m╔════════════════════════════════════════════════════════════╗\x1b[0m");
-    term.writeln("\x1b[1;34m║\x1b[0m          \x1b[1;33mAWS Systems Manager Session Manager\x1b[0m              \x1b[1;34m║\x1b[0m");
-    term.writeln("\x1b[1;34m╚════════════════════════════════════════════════════════════╝\x1b[0m");
+  const simulateSSMConnection = (
+    term: Terminal,
+    instId: string,
+    instName: string
+  ) => {
+    term.writeln(
+      "\x1b[1;34m╔════════════════════════════════════════════════════════════╗\x1b[0m"
+    );
+    term.writeln(
+      "\x1b[1;34m║\x1b[0m          \x1b[1;33mAWS Systems Manager Session Manager\x1b[0m              \x1b[1;34m║\x1b[0m"
+    );
+    term.writeln(
+      "\x1b[1;34m╚════════════════════════════════════════════════════════════╝\x1b[0m"
+    );
     term.writeln("");
-    term.writeln(`\x1b[36mConnecting to instance: \x1b[1;37m${instName}\x1b[0m`);
+    term.writeln(
+      `\x1b[36mConnecting to instance: \x1b[1;37m${instName}\x1b[0m`
+    );
     term.writeln(`\x1b[36mInstance ID: \x1b[1;37m${instId}\x1b[0m`);
     term.writeln("");
     term.writeln("\x1b[33m⏳ Establishing session...\x1b[0m");
@@ -99,7 +115,9 @@ export function SSMTerminal({ instanceId, instanceName, onClose }: SSMTerminalPr
       setIsConnected(true);
 
       // Simulate shell prompt
-      term.writeln("\x1b[90m─────────────────────────────────────────────────────────────\x1b[0m");
+      term.writeln(
+        "\x1b[90m─────────────────────────────────────────────────────────────\x1b[0m"
+      );
       term.writeln("");
       term.write(`\x1b[1;32msh-4.2$\x1b[0m `);
 
@@ -140,25 +158,45 @@ export function SSMTerminal({ instanceId, instanceName, onClose }: SSMTerminalPr
         term.writeln("/home/ssm-user");
         break;
       case "ls":
-        term.writeln("\x1b[1;34mapp\x1b[0m  \x1b[1;34mlogs\x1b[0m  \x1b[1;34mscripts\x1b[0m");
+        term.writeln(
+          "\x1b[1;34mapp\x1b[0m  \x1b[1;34mlogs\x1b[0m  \x1b[1;34mscripts\x1b[0m"
+        );
         break;
       case "ls -la":
         term.writeln("total 12");
-        term.writeln("drwxr-xr-x 5 ssm-user ssm-user 4096 Jan 12 10:00 \x1b[1;34m.\x1b[0m");
-        term.writeln("drwxr-xr-x 3 root     root     4096 Jan 12 09:00 \x1b[1;34m..\x1b[0m");
-        term.writeln("drwxr-xr-x 2 ssm-user ssm-user 4096 Jan 12 10:00 \x1b[1;34mapp\x1b[0m");
-        term.writeln("drwxr-xr-x 2 ssm-user ssm-user 4096 Jan 12 10:00 \x1b[1;34mlogs\x1b[0m");
-        term.writeln("drwxr-xr-x 2 ssm-user ssm-user 4096 Jan 12 10:00 \x1b[1;34mscripts\x1b[0m");
+        term.writeln(
+          "drwxr-xr-x 5 ssm-user ssm-user 4096 Jan 12 10:00 \x1b[1;34m.\x1b[0m"
+        );
+        term.writeln(
+          "drwxr-xr-x 3 root     root     4096 Jan 12 09:00 \x1b[1;34m..\x1b[0m"
+        );
+        term.writeln(
+          "drwxr-xr-x 2 ssm-user ssm-user 4096 Jan 12 10:00 \x1b[1;34mapp\x1b[0m"
+        );
+        term.writeln(
+          "drwxr-xr-x 2 ssm-user ssm-user 4096 Jan 12 10:00 \x1b[1;34mlogs\x1b[0m"
+        );
+        term.writeln(
+          "drwxr-xr-x 2 ssm-user ssm-user 4096 Jan 12 10:00 \x1b[1;34mscripts\x1b[0m"
+        );
         break;
       case "uname -a":
-        term.writeln("Linux ip-10-0-1-100.ap-northeast-2.compute.internal 5.10.178-162.673.amzn2.x86_64 #1 SMP Thu Apr 27 00:00:00 UTC 2023 x86_64 x86_64 x86_64 GNU/Linux");
+        term.writeln(
+          "Linux ip-10-0-1-100.ap-northeast-2.compute.internal 5.10.178-162.673.amzn2.x86_64 #1 SMP Thu Apr 27 00:00:00 UTC 2023 x86_64 x86_64 x86_64 GNU/Linux"
+        );
         break;
       case "uptime":
-        term.writeln(" 10:30:15 up 45 days,  3:21,  1 user,  load average: 0.08, 0.05, 0.01");
+        term.writeln(
+          " 10:30:15 up 45 days,  3:21,  1 user,  load average: 0.08, 0.05, 0.01"
+        );
         break;
       case "free -h":
-        term.writeln("              total        used        free      shared  buff/cache   available");
-        term.writeln("Mem:          3.8Gi       1.2Gi       1.5Gi        12Mi       1.1Gi       2.4Gi");
+        term.writeln(
+          "              total        used        free      shared  buff/cache   available"
+        );
+        term.writeln(
+          "Mem:          3.8Gi       1.2Gi       1.5Gi        12Mi       1.1Gi       2.4Gi"
+        );
         term.writeln("Swap:            0B          0B          0B");
         break;
       case "df -h":
@@ -186,7 +224,9 @@ export function SSMTerminal({ instanceId, instanceName, onClose }: SSMTerminalPr
         term.writeln("  whoami, hostname, pwd, ls, ls -la, uname -a");
         term.writeln("  uptime, free -h, df -h, date, clear, exit, help");
         term.writeln("");
-        term.writeln("\x1b[90mNote: This is a demo terminal. Real SSM connection requires backend integration.\x1b[0m");
+        term.writeln(
+          "\x1b[90mNote: This is a demo terminal. Real SSM connection requires backend integration.\x1b[0m"
+        );
         break;
       default:
         term.writeln(`\x1b[31m-bash: ${cmd}: command not found\x1b[0m`);
@@ -199,7 +239,15 @@ export function SSMTerminal({ instanceId, instanceName, onClose }: SSMTerminalPr
       {/* Terminal Header */}
       <div className="flex items-center justify-between px-4 py-2 bg-muted/50 border-b border-border">
         <div className="flex items-center gap-2">
-          <div className={`h-2 w-2 rounded-full ${isConnected ? "bg-success animate-pulse" : isConnecting ? "bg-warning animate-pulse" : "bg-destructive"}`} />
+          <div
+            className={`h-2 w-2 rounded-full ${
+              isConnected
+                ? "bg-success animate-pulse"
+                : isConnecting
+                ? "bg-warning animate-pulse"
+                : "bg-destructive"
+            }`}
+          />
           <span className="text-sm font-medium text-foreground">
             {instanceName}
           </span>
@@ -208,10 +256,12 @@ export function SSMTerminal({ instanceId, instanceName, onClose }: SSMTerminalPr
           </span>
         </div>
         <div className="flex items-center gap-2">
-          {isConnecting && <span className="text-xs text-muted-foreground">연결 중...</span>}
+          {isConnecting && (
+            <span className="text-xs text-muted-foreground">연결 중...</span>
+          )}
           {isConnected && <span className="text-xs text-success">연결됨</span>}
           {onClose && (
-            <button 
+            <button
               onClick={onClose}
               className="ml-2 text-muted-foreground hover:text-foreground transition-colors text-sm px-2 py-1 rounded hover:bg-muted"
             >
@@ -222,8 +272,8 @@ export function SSMTerminal({ instanceId, instanceName, onClose }: SSMTerminalPr
       </div>
 
       {/* Terminal Container */}
-      <div 
-        ref={terminalRef} 
+      <div
+        ref={terminalRef}
         className="flex-1 p-2"
         style={{ backgroundColor: "#1a1a2e" }}
       />
