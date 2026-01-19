@@ -1,7 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
+import {
+  getShutdownSchedule,
+  type ShutdownSchedule,
+} from "@/lib/api/maintenance";
 import {
   LayoutDashboard,
   Server,
@@ -35,15 +39,40 @@ const navItems: NavItem[] = [
   { icon: Shield, label: "IAM 정책", path: "/iam" },
   { icon: Tags, label: "모듈 관리", path: "/modules" },
   { icon: Box, label: "템플릿", path: "/templates" },
-  { icon: Building2, label: "AWS 계정 관리", path: "/aws-accounts", adminOnly: true },
+  {
+    icon: Building2,
+    label: "Admin 설정",
+    path: "/admin-settings",
+    adminOnly: true,
+  },
 ];
 
 export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
+  const [shutdownSchedule, setShutdownSchedule] =
+    useState<ShutdownSchedule | null>(null);
   const location = useLocation();
   const { user, isAdmin, logout } = useAuth();
 
-  const filteredNavItems = navItems.filter(item => !item.adminOnly || isAdmin);
+  const filteredNavItems = navItems.filter(
+    (item) => !item.adminOnly || isAdmin
+  );
+
+  useEffect(() => {
+    const fetchShutdownSchedule = async () => {
+      try {
+        const schedule = await getShutdownSchedule();
+        setShutdownSchedule(schedule);
+      } catch (error) {
+        console.error("Failed to fetch shutdown schedule:", error);
+      }
+    };
+
+    fetchShutdownSchedule();
+    const interval = setInterval(fetchShutdownSchedule, 60000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <aside
@@ -87,12 +116,16 @@ export function Sidebar() {
                   : "text-muted-foreground hover:bg-accent hover:text-foreground"
               )}
             >
-              <item.icon className={cn("h-5 w-5 shrink-0", isActive && "text-primary")} />
+              <item.icon
+                className={cn("h-5 w-5 shrink-0", isActive && "text-primary")}
+              />
               {!collapsed && (
                 <span className="flex items-center gap-2">
                   {item.label}
                   {item.adminOnly && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/20 text-primary">Admin</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/20 text-primary">
+                      Admin
+                    </span>
                   )}
                 </span>
               )}
@@ -102,36 +135,56 @@ export function Sidebar() {
       </nav>
 
       <div className="absolute bottom-0 left-0 right-0 border-t border-border p-3 space-y-1">
-        {/* 서버 종료 예정 */}
-        {!collapsed && (
-          <div className="px-3 py-2 mb-2 rounded-lg bg-destructive/10 border border-destructive/20">
-            <div className="flex items-center gap-2 text-destructive">
-              <Clock className="h-4 w-4" />
-              <span className="text-xs font-medium">서버 종료 예정</span>
-            </div>
-            <p className="text-xs text-destructive/80 mt-1">2026-01-10 18:00</p>
-          </div>
-        )}
-        {collapsed && (
-          <div className="flex justify-center py-2 mb-2">
-            <Clock className="h-5 w-5 text-destructive" />
-          </div>
+        {shutdownSchedule && (
+          <>
+            {!collapsed && (
+              <div className="px-3 py-2 mb-2 rounded-lg bg-destructive/10 border border-destructive/20">
+                <div className="flex items-center gap-2 text-destructive">
+                  <Clock className="h-4 w-4" />
+                  <span className="text-xs font-medium">서버 종료 예정</span>
+                </div>
+                <p className="text-xs text-destructive/80 mt-1">
+                  {new Date(shutdownSchedule.scheduledAt).toLocaleString(
+                    "ko-KR"
+                  )}
+                </p>
+                {shutdownSchedule.reason && (
+                  <p className="text-xs text-destructive/70 mt-1">
+                    {shutdownSchedule.reason}
+                  </p>
+                )}
+              </div>
+            )}
+            {collapsed && (
+              <div className="flex justify-center py-2 mb-2">
+                <Clock className="h-5 w-5 text-destructive" />
+              </div>
+            )}
+          </>
         )}
 
         {/* User Info */}
         {!collapsed && user && (
           <div className="px-3 py-2 mb-2">
-            <p className="text-sm font-medium text-foreground truncate">{user.name}</p>
-            <p className="text-xs text-muted-foreground truncate">{user.email}</p>
-            <span className={cn(
-              "inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded",
-              user.role === 'admin' ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"
-            )}>
-              {user.role === 'admin' ? 'Admin' : 'Developer'}
+            <p className="text-sm font-medium text-foreground truncate">
+              {user.name}
+            </p>
+            <p className="text-xs text-muted-foreground truncate">
+              {user.email}
+            </p>
+            <span
+              className={cn(
+                "inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded",
+                user.role === "admin"
+                  ? "bg-primary/20 text-primary"
+                  : "bg-muted text-muted-foreground"
+              )}
+            >
+              {user.role === "admin" ? "Admin" : "Developer"}
             </span>
           </div>
         )}
-        
+
         <Link
           to="/settings"
           className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
@@ -139,7 +192,7 @@ export function Sidebar() {
           <Settings className="h-5 w-5 shrink-0" />
           {!collapsed && <span>설정</span>}
         </Link>
-        
+
         <button
           onClick={logout}
           className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"

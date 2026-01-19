@@ -1,13 +1,21 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
+import { API_CONFIG, buildApiUrl, buildWsUrl } from "../../config/api";
 
 interface SSMTerminalProps {
   instanceId: string;
   instanceName: string;
   onClose?: () => void;
+}
+
+interface SsmSessionResponse {
+  result: {
+    sessionId: string;
+    wsUrl: string;
+  };
 }
 
 export function SSMTerminal({
@@ -18,13 +26,122 @@ export function SSMTerminal({
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(true);
   const [isConnected, setIsConnected] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const getAuthToken = useCallback(() => {
+    return localStorage.getItem("access_token");
+  }, []);
+
+  const terminateSession = useCallback(async () => {
+    if (sessionIdRef.current) {
+      try {
+        const token = getAuthToken();
+        await fetch(
+          buildApiUrl(API_CONFIG.ENDPOINTS.SSM.TERMINATE_SESSION, {
+            sessionId: sessionIdRef.current,
+          }),
+          {
+            method: "DELETE",
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+      } catch (e) {
+        console.error("Failed to terminate session:", e);
+      }
+    }
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+  }, [getAuthToken]);
+
+  const encodeInputPayload = (input: string): string | null => {
+    try {
+      const bytes = new TextEncoder().encode(input);
+      return encodeBase64(bytes);
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      console.error("SSM input encode failed", {
+        timestamp: new Date().toISOString(),
+        env: import.meta.env.MODE,
+        sessionId: sessionIdRef.current,
+        instanceId,
+        length: input.length,
+        error: errorMessage,
+      });
+      return null;
+    }
+  };
+
+  const encodeBase64 = (bytes: Uint8Array): string => {
+    const alphabet =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let output = "";
+    let i = 0;
+
+    for (; i + 2 < bytes.length; i += 3) {
+      const triple = (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2];
+      output += alphabet[(triple >> 18) & 0x3f];
+      output += alphabet[(triple >> 12) & 0x3f];
+      output += alphabet[(triple >> 6) & 0x3f];
+      output += alphabet[triple & 0x3f];
+    }
+
+    const remaining = bytes.length - i;
+    if (remaining === 1) {
+      const triple = bytes[i] << 16;
+      output += alphabet[(triple >> 18) & 0x3f];
+      output += alphabet[(triple >> 12) & 0x3f];
+      output += "==";
+    } else if (remaining === 2) {
+      const triple = (bytes[i] << 16) | (bytes[i + 1] << 8);
+      output += alphabet[(triple >> 18) & 0x3f];
+      output += alphabet[(triple >> 12) & 0x3f];
+      output += alphabet[(triple >> 6) & 0x3f];
+      output += "=";
+    }
+
+    return output;
+  };
 
   useEffect(() => {
     if (!terminalRef.current) return;
 
-    // Initialize xterm.js
+    // Cleanup previous session if exists
+    const cleanup = async () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      if (sessionIdRef.current) {
+        try {
+          const token = getAuthToken();
+          await fetch(
+            buildApiUrl(API_CONFIG.ENDPOINTS.SSM.TERMINATE_SESSION, {
+              sessionId: sessionIdRef.current,
+            }),
+            {
+              method: "DELETE",
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            }
+          );
+        } catch (e) {
+          console.error("Failed to terminate previous session:", e);
+        }
+        sessionIdRef.current = null;
+      }
+    };
+    cleanup();
+
     const term = new Terminal({
       cursorBlink: true,
       fontSize: 14,
@@ -66,27 +183,34 @@ export function SSMTerminal({
     xtermRef.current = term;
     fitAddonRef.current = fitAddon;
 
-    // Fit terminal to container
     setTimeout(() => {
       fitAddon.fit();
     }, 0);
 
-    // Handle window resize
     const handleResize = () => {
       fitAddon.fit();
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        const resizeMessage = JSON.stringify({
+          Type: "size",
+          Cols: term.cols,
+          Rows: term.rows,
+        });
+        wsRef.current.send(resizeMessage);
+      }
     };
     window.addEventListener("resize", handleResize);
 
-    // Simulate SSM connection
-    simulateSSMConnection(term, instanceId, instanceName);
+    connectToSSM(term, instanceId, instanceName);
 
     return () => {
       window.removeEventListener("resize", handleResize);
+      terminateSession();
       term.dispose();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [instanceId, instanceName]);
 
-  const simulateSSMConnection = (
+  const connectToSSM = async (
     term: Terminal,
     instId: string,
     instName: string
@@ -108,130 +232,136 @@ export function SSMTerminal({
     term.writeln("");
     term.writeln("\x1b[33m⏳ Establishing session...\x1b[0m");
 
-    setTimeout(() => {
-      term.writeln("\x1b[32m✓ Session established successfully!\x1b[0m");
-      term.writeln("");
+    try {
+      const token = getAuthToken();
+      if (!token) {
+        throw new Error("인증 토큰이 없습니다. 다시 로그인해주세요.");
+      }
+
+      const response = await fetch(
+        buildApiUrl(API_CONFIG.ENDPOINTS.SSM.CREATE_SESSION),
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ instanceId: instId }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`세션 생성 실패: ${response.status} - ${errorText}`);
+      }
+
+      const data: SsmSessionResponse = await response.json();
+      sessionIdRef.current = data.result.sessionId;
+
+      const wsUrl = buildWsUrl(`/ws/ssm/${data.result.sessionId}`);
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        // 연결 성공 시 별도 메시지 없이 즉시 준비
+      };
+
+      ws.onmessage = async (event) => {
+        const data = event.data;
+
+        // Handle binary messages
+        if (data instanceof Blob) {
+          try {
+            const arrayBuffer = await data.arrayBuffer();
+            const uint8Array = new Uint8Array(arrayBuffer);
+            term.write(uint8Array);
+
+            if (!isConnected) {
+              setIsConnecting(false);
+              setIsConnected(true);
+            }
+          } catch (err) {
+            console.error("Failed to process binary SSM message", err);
+          }
+          return;
+        }
+
+        // Handle text messages (JSON)
+        if (typeof data === "string") {
+          try {
+            const message = JSON.parse(data);
+            const type = message.Type || message.MessageType;
+
+            if (
+              (type === "output_stream_data" || message.PayloadType === 1) &&
+              message.Payload
+            ) {
+              const decoded = atob(message.Payload);
+              term.write(decoded);
+            } else if (type === "control" || type === "handshake") {
+              // ignore control/handshake messages
+            }
+
+            if (!isConnected) {
+              setIsConnecting(false);
+              setIsConnected(true);
+            }
+          } catch (err) {
+            console.error("Failed to process SSM message", err);
+          }
+        }
+      };
+
+      ws.onerror = (event) => {
+        console.error("WebSocket error:", event);
+        term.writeln("\x1b[31m✗ WebSocket 연결 오류\x1b[0m");
+        setError("WebSocket 연결 오류가 발생했습니다.");
+      };
+
+      ws.onclose = (event) => {
+        term.writeln("");
+        term.writeln(
+          `\x1b[33m세션이 종료되었습니다. (code: ${event.code})\x1b[0m`
+        );
+        setIsConnected(false);
+        setIsConnecting(false);
+      };
+
+      term.onData((data) => {
+        if (ws.readyState === WebSocket.OPEN) {
+          const payload = encodeInputPayload(data);
+          if (!payload) {
+            return;
+          }
+          const inputMessage = JSON.stringify({
+            Type: "input_stream_data",
+            Payload: payload,
+          });
+          ws.send(inputMessage);
+        }
+      });
+
       setIsConnecting(false);
       setIsConnected(true);
-
-      // Simulate shell prompt
+      term.writeln("\x1b[32m✓ Session established successfully!\x1b[0m");
+      term.writeln("");
       term.writeln(
         "\x1b[90m─────────────────────────────────────────────────────────────\x1b[0m"
       );
       term.writeln("");
-      term.write(`\x1b[1;32msh-4.2$\x1b[0m `);
-
-      // Handle user input
-      let currentLine = "";
-      term.onKey(({ key, domEvent }) => {
-        const code = key.charCodeAt(0);
-
-        if (domEvent.key === "Enter") {
-          term.writeln("");
-          handleCommand(term, currentLine.trim());
-          currentLine = "";
-          term.write(`\x1b[1;32msh-4.2$\x1b[0m `);
-        } else if (domEvent.key === "Backspace") {
-          if (currentLine.length > 0) {
-            currentLine = currentLine.slice(0, -1);
-            term.write("\b \b");
-          }
-        } else if (code >= 32 && code <= 126) {
-          currentLine += key;
-          term.write(key);
-        }
-      });
-    }, 1500);
+    } catch (err) {
+      const errorMessage =
+        err instanceof Error ? err.message : "알 수 없는 오류";
+      term.writeln(`\x1b[31m✗ 연결 실패: ${errorMessage}\x1b[0m`);
+      setError(errorMessage);
+      setIsConnecting(false);
+    }
   };
 
-  const handleCommand = (term: Terminal, cmd: string) => {
-    if (!cmd) return;
-
-    switch (cmd.toLowerCase()) {
-      case "whoami":
-        term.writeln("ssm-user");
-        break;
-      case "hostname":
-        term.writeln(`ip-10-0-1-100.ap-northeast-2.compute.internal`);
-        break;
-      case "pwd":
-        term.writeln("/home/ssm-user");
-        break;
-      case "ls":
-        term.writeln(
-          "\x1b[1;34mapp\x1b[0m  \x1b[1;34mlogs\x1b[0m  \x1b[1;34mscripts\x1b[0m"
-        );
-        break;
-      case "ls -la":
-        term.writeln("total 12");
-        term.writeln(
-          "drwxr-xr-x 5 ssm-user ssm-user 4096 Jan 12 10:00 \x1b[1;34m.\x1b[0m"
-        );
-        term.writeln(
-          "drwxr-xr-x 3 root     root     4096 Jan 12 09:00 \x1b[1;34m..\x1b[0m"
-        );
-        term.writeln(
-          "drwxr-xr-x 2 ssm-user ssm-user 4096 Jan 12 10:00 \x1b[1;34mapp\x1b[0m"
-        );
-        term.writeln(
-          "drwxr-xr-x 2 ssm-user ssm-user 4096 Jan 12 10:00 \x1b[1;34mlogs\x1b[0m"
-        );
-        term.writeln(
-          "drwxr-xr-x 2 ssm-user ssm-user 4096 Jan 12 10:00 \x1b[1;34mscripts\x1b[0m"
-        );
-        break;
-      case "uname -a":
-        term.writeln(
-          "Linux ip-10-0-1-100.ap-northeast-2.compute.internal 5.10.178-162.673.amzn2.x86_64 #1 SMP Thu Apr 27 00:00:00 UTC 2023 x86_64 x86_64 x86_64 GNU/Linux"
-        );
-        break;
-      case "uptime":
-        term.writeln(
-          " 10:30:15 up 45 days,  3:21,  1 user,  load average: 0.08, 0.05, 0.01"
-        );
-        break;
-      case "free -h":
-        term.writeln(
-          "              total        used        free      shared  buff/cache   available"
-        );
-        term.writeln(
-          "Mem:          3.8Gi       1.2Gi       1.5Gi        12Mi       1.1Gi       2.4Gi"
-        );
-        term.writeln("Swap:            0B          0B          0B");
-        break;
-      case "df -h":
-        term.writeln("Filesystem      Size  Used Avail Use% Mounted on");
-        term.writeln("/dev/xvda1       20G  8.5G   12G  43% /");
-        term.writeln("tmpfs           1.9G     0  1.9G   0% /dev/shm");
-        break;
-      case "date":
-        term.writeln(new Date().toString());
-        break;
-      case "clear":
-        term.clear();
-        break;
-      case "exit":
-        term.writeln("");
-        term.writeln("\x1b[33mExiting session...\x1b[0m");
-        setTimeout(() => {
-          term.writeln("\x1b[32mSession terminated.\x1b[0m");
-          setIsConnected(false);
-          if (onClose) onClose();
-        }, 500);
-        break;
-      case "help":
-        term.writeln("\x1b[1;33mDemo Commands:\x1b[0m");
-        term.writeln("  whoami, hostname, pwd, ls, ls -la, uname -a");
-        term.writeln("  uptime, free -h, df -h, date, clear, exit, help");
-        term.writeln("");
-        term.writeln(
-          "\x1b[90mNote: This is a demo terminal. Real SSM connection requires backend integration.\x1b[0m"
-        );
-        break;
-      default:
-        term.writeln(`\x1b[31m-bash: ${cmd}: command not found\x1b[0m`);
-        term.writeln("\x1b[90mType 'help' for available demo commands\x1b[0m");
-    }
+  const handleDisconnect = () => {
+    terminateSession();
+    setIsConnected(false);
+    if (onClose) onClose();
   };
 
   return (
@@ -271,10 +401,17 @@ export function SSMTerminal({
         </div>
       </div>
 
+      {/* Error Message */}
+      {error && (
+        <div className="px-4 py-2 bg-destructive/10 border-b border-destructive/20">
+          <span className="text-xs text-destructive">{error}</span>
+        </div>
+      )}
+
       {/* Terminal Container */}
       <div
         ref={terminalRef}
-        className="flex-1 p-2"
+        className="flex-1 p-2 h-full"
         style={{ backgroundColor: "#1a1a2e" }}
       />
     </div>

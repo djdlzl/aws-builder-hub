@@ -6,6 +6,7 @@ import {
   ReactNode,
 } from "react";
 import { API_CONFIG, buildApiUrl } from "@/config/api";
+import { useAuth } from "./use-auth";
 
 interface AWSAccount {
   id: string;
@@ -50,6 +51,8 @@ export function AWSProvider({ children }: { children: ReactNode }) {
     defaultRegions[0]
   );
   const [isLoading, setIsLoading] = useState(true);
+
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
 
   const getAuthHeaders = () => {
     const token = localStorage.getItem("access_token");
@@ -137,9 +140,20 @@ export function AWSProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
+    if (authLoading) {
+      return;
+    }
+
+    if (!isAuthenticated) {
+      setAccounts([]);
+      setSelectedAccount(null);
+      setIsLoading(false);
+      return;
+    }
+
     fetchVerifiedAccounts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isAuthenticated, authLoading]);
 
   const refreshAccounts = async () => {
     setIsLoading(true);

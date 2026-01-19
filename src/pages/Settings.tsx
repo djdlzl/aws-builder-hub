@@ -4,11 +4,12 @@ import { Moon, Sun, Monitor } from "lucide-react";
 import { useTheme } from "@/hooks/use-theme";
 import { cn } from "@/lib/utils";
 import SsoSettings from "@/components/settings/SsoSettings";
-import AwsAccountSettings from "@/components/settings/AwsAccountSettings";
+import { useAuth } from "@/hooks/use-auth";
 
 export default function Settings() {
   const { theme, setTheme } = useTheme();
-  const isAdmin = localStorage.getItem("user_role") === "ADMIN";
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
 
   const themeOptions = [
     { value: "light" as const, label: "라이트", icon: Sun },
@@ -52,15 +53,9 @@ export default function Settings() {
       </div>
 
       {isAdmin && (
-        <>
-          <div className="rounded-xl border border-border bg-card p-6">
-            <AwsAccountSettings />
-          </div>
-
-          <div className="rounded-xl border border-border bg-card p-6">
-            <SsoSettings />
-          </div>
-        </>
+        <div className="rounded-xl border border-border bg-card p-6">
+          <SsoSettings />
+        </div>
       )}
     </div>
   );

@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -20,6 +21,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Plus,
   Database,
@@ -37,6 +39,22 @@ import { toast } from "sonner";
 import { ModulePreview } from "@/components/modules/ModulePreview";
 import { API_CONFIG, buildApiUrl } from "@/config/api";
 import { useAWSContext } from "@/hooks/use-aws-context";
+import {
+  fetchInstanceTemplates,
+  fetchProvisioningModules,
+  fetchTemplateDefaults,
+} from "@/lib/api/provisioning-defaults";
+import {
+  emptyProvisioningState,
+  mergeProvisioningDefaults,
+  toProvisioningDefaultsSource,
+} from "@/lib/provisioning";
+import type {
+  InstanceTemplateResponse,
+  ModuleDetailResponse,
+  ProvisioningFormState,
+  TemplateDefaultResponse,
+} from "@/types/provisioning";
 
 interface RDSInstance {
   id: string;
@@ -68,6 +86,30 @@ const statusLabels: Record<string, string> = {
   creating: "생성중",
 };
 
+const engineLabels: Record<string, string> = {
+  mysql: "마이에스큐엘",
+  postgres: "포스트그레에스큐엘",
+  postgresql: "포스트그레에스큐엘",
+  mariadb: "마리아디비",
+  "aurora-mysql": "오로라 마이에스큐엘",
+  "aurora-postgres": "오로라 포스트그레에스큐엘",
+  "aurora-postgresql": "오로라 포스트그레에스큐엘",
+};
+
+const instanceClassLabels: Record<string, string> = {
+  "db.t3.micro": "티3 마이크로",
+  "db.t3.small": "티3 스몰",
+  "db.t3.medium": "티3 미디엄",
+  "db.r5.large": "알5 라지",
+  "db.r5.xlarge": "알5 엑스라지",
+};
+
+const formatEngine = (engine: string) =>
+  engineLabels[engine] ?? "알 수 없는 엔진";
+
+const formatInstanceClass = (instanceClass: string) =>
+  instanceClassLabels[instanceClass] ?? "알 수 없는 클래스";
+
 export default function RDS() {
   const [instances, setInstances] = useState<RDSInstance[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -76,7 +118,22 @@ export default function RDS() {
   const [instanceName, setInstanceName] = useState("");
   const [engine, setEngine] = useState("");
   const [instanceClass, setInstanceClass] = useState("");
-  const [selectedModule, setSelectedModule] = useState("");
+  const [templateOptions, setTemplateOptions] = useState<
+    InstanceTemplateResponse[]
+  >([]);
+  const [moduleOptions, setModuleOptions] = useState<ModuleDetailResponse[]>(
+    []
+  );
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [selectedModuleIds, setSelectedModuleIds] = useState<number[]>([]);
+  const [templateDefaults, setTemplateDefaults] =
+    useState<TemplateDefaultResponse | null>(null);
+  const [defaultsLoading, setDefaultsLoading] = useState(false);
+  const [defaultsError, setDefaultsError] = useState<string | null>(null);
+  const [provisioningDefaults, setProvisioningDefaults] =
+    useState<ProvisioningFormState>(emptyProvisioningState);
+  const [provisioningState, setProvisioningState] =
+    useState<ProvisioningFormState>(emptyProvisioningState);
 
   const getAuthHeaders = () => {
     const token = localStorage.getItem("access_token");
@@ -121,7 +178,7 @@ export default function RDS() {
               status: inst.status,
               endpoint: inst.endpoint ? `${inst.endpoint}:${inst.port}` : "-",
               az: inst.availabilityZone || "-",
-              storage: `${inst.allocatedStorage} GB`,
+              storage: `${inst.allocatedStorage}기가바이트`,
               accountName: inst.accountName,
               region: inst.region,
             })
@@ -129,7 +186,10 @@ export default function RDS() {
           setInstances(list);
         }
       } catch (error) {
-        console.error("Failed to fetch RDS instances:", error);
+        console.error(
+          "관계형 데이터베이스 인스턴스를 불러오지 못했습니다:",
+          error
+        );
       } finally {
         setIsLoading(false);
       }
@@ -137,29 +197,173 @@ export default function RDS() {
     fetchInstances();
   }, [accounts]);
 
+  useEffect(() => {
+    const loadOptions = async () => {
+      try {
+        const [modules, templates] = await Promise.all([
+          fetchProvisioningModules(),
+          fetchInstanceTemplates(),
+        ]);
+        setModuleOptions(modules.filter((module) => module.isActive));
+        setTemplateOptions(
+          templates.filter(
+            (template) =>
+              template.isActive && template.templateType === "INSTANCE"
+          )
+        );
+      } catch (error) {
+        console.error("프로비저닝 기본값을 불러오지 못했습니다:", error);
+        toast.error("프로비저닝 기본값을 불러오지 못했습니다.");
+      }
+    };
+    loadOptions();
+  }, []);
+
+  useEffect(() => {
+    const loadTemplateDefaults = async () => {
+      if (!selectedTemplateId) {
+        setTemplateDefaults(null);
+        setDefaultsError(null);
+        setDefaultsLoading(false);
+        return;
+      }
+      setDefaultsLoading(true);
+      setDefaultsError(null);
+      setTemplateDefaults(null);
+      try {
+        const detail = await fetchTemplateDefaults(Number(selectedTemplateId));
+        setTemplateDefaults(detail);
+      } catch (error) {
+        console.error("템플릿 기본값을 불러오지 못했습니다:", error);
+        setDefaultsError("템플릿 기본값을 불러오지 못했습니다.");
+        toast.error("템플릿 기본값을 불러오지 못했습니다.");
+      } finally {
+        setDefaultsLoading(false);
+      }
+    };
+    loadTemplateDefaults();
+  }, [selectedTemplateId]);
+
+  useEffect(() => {
+    if (!templateDefaults) {
+      return;
+    }
+    const templateModuleIds = new Set(
+      templateDefaults.modules.map((module) => module.moduleId)
+    );
+    setSelectedModuleIds((prev) =>
+      prev.filter((moduleId) => !templateModuleIds.has(moduleId))
+    );
+  }, [templateDefaults]);
+
+  useEffect(() => {
+    const selectedModules = selectedModuleIds
+      .map((moduleId) => moduleOptions.find((module) => module.id === moduleId))
+      .filter((module): module is ModuleDetailResponse => module !== undefined);
+    const sources = [] as ReturnType<typeof toProvisioningDefaultsSource>[];
+    if (selectedModules.length > 0) {
+      sources.push(
+        ...selectedModules.map((module) => toProvisioningDefaultsSource(module))
+      );
+    }
+    if (templateDefaults) {
+      sources.push(
+        ...templateDefaults.modules.map((module) =>
+          toProvisioningDefaultsSource(module)
+        )
+      );
+    }
+    const merged = mergeProvisioningDefaults(sources);
+    setProvisioningDefaults(merged);
+    setProvisioningState(merged);
+  }, [templateDefaults, selectedModuleIds, moduleOptions]);
+
+  useEffect(() => {
+    if (provisioningDefaults.instanceOptions?.instanceType) {
+      setInstanceClass(provisioningDefaults.instanceOptions.instanceType);
+    }
+  }, [provisioningDefaults]);
+
+  const handleTagChange = (tagKey: string, value: string) => {
+    setProvisioningState((prev) => ({
+      ...prev,
+      tags: prev.tags.map((tag) =>
+        tag.tagKey === tagKey ? { ...tag, tagValue: value } : tag
+      ),
+    }));
+  };
+
+  const handleToggleModule = (moduleId: number, checked: boolean) => {
+    setSelectedModuleIds((prev) => {
+      if (checked) {
+        return prev.includes(moduleId) ? prev : [...prev, moduleId];
+      }
+      return prev.filter((id) => id !== moduleId);
+    });
+  };
+
   const handleCreate = () => {
+    const missingMandatoryTags = provisioningState.tags.filter(
+      (tag) => tag.isMandatory && !tag.tagValue?.trim()
+    ).length;
+    if (missingMandatoryTags > 0) {
+      toast.error("필수 태그 값을 입력해주세요.");
+      return;
+    }
+    if (!selectedTemplateId) {
+      toast.error("템플릿을 선택해주세요.");
+      return;
+    }
     if (!instanceName || !engine || !instanceClass) {
       toast.error("필수 항목을 입력해주세요.");
       return;
     }
-    toast.success("RDS 인스턴스 생성이 시작되었습니다.");
+    toast.success("관계형 데이터베이스 인스턴스 생성이 시작되었습니다.");
     setCreateOpen(false);
     setInstanceName("");
     setEngine("");
     setInstanceClass("");
-    setSelectedModule("");
+    setSelectedTemplateId("");
+    setSelectedModuleIds([]);
+    setTemplateDefaults(null);
+    setProvisioningDefaults(emptyProvisioningState);
+    setProvisioningState(emptyProvisioningState);
   };
 
   const handleSnapshot = (instanceId: string) => {
     toast.success(`${instanceId} 스냅샷 생성이 시작되었습니다.`);
   };
 
+  const selectedTemplate = templateOptions.find(
+    (template) => template.id === Number(selectedTemplateId)
+  );
+  const selectedModules = selectedModuleIds
+    .map((moduleId) => moduleOptions.find((module) => module.id === moduleId))
+    .filter((module): module is ModuleDetailResponse => module !== undefined);
+  const availableModules = useMemo(() => {
+    if (!templateDefaults) {
+      return moduleOptions;
+    }
+    const templateModuleIds = new Set(
+      templateDefaults.modules.map((module) => module.moduleId)
+    );
+    return moduleOptions.filter((module) => !templateModuleIds.has(module.id));
+  }, [moduleOptions, templateDefaults]);
+  const selectedModuleNames = selectedModules.map((module) => module.name);
+  const previewSubtitle = selectedTemplate
+    ? selectedModuleNames.length > 0
+      ? `${selectedTemplate.name} + ${selectedModuleNames.join(", ")}`
+      : selectedTemplate.name
+    : selectedModuleNames.length > 0
+    ? selectedModuleNames.join(", ")
+    : undefined;
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-foreground">
-            RDS 데이터베이스
+            관계형 데이터베이스
           </h1>
           <p className="text-muted-foreground mt-1">
             관계형 데이터베이스 인스턴스를 관리합니다
@@ -176,10 +380,10 @@ export default function RDS() {
           <DialogContent className="sm:max-w-[600px] bg-card border-border">
             <DialogHeader>
               <DialogTitle className="text-foreground">
-                새 RDS 인스턴스 생성
+                새 관계형 데이터베이스 인스턴스 생성
               </DialogTitle>
               <DialogDescription className="text-muted-foreground">
-                새로운 RDS 데이터베이스 인스턴스를 생성합니다.
+                새로운 관계형 데이터베이스 인스턴스를 생성합니다.
               </DialogDescription>
             </DialogHeader>
 
@@ -190,7 +394,7 @@ export default function RDS() {
                   id="name"
                   value={instanceName}
                   onChange={(e) => setInstanceName(e.target.value)}
-                  placeholder="예: prod-mysql-main"
+                  placeholder="예: 운영-데이터베이스-01"
                   className="bg-secondary border-border"
                 />
               </div>
@@ -203,12 +407,16 @@ export default function RDS() {
                       <SelectValue placeholder="엔진 선택" />
                     </SelectTrigger>
                     <SelectContent className="bg-popover border-border">
-                      <SelectItem value="mysql">MySQL 8.0</SelectItem>
-                      <SelectItem value="postgres">PostgreSQL 15</SelectItem>
-                      <SelectItem value="mariadb">MariaDB 10.6</SelectItem>
-                      <SelectItem value="aurora-mysql">Aurora MySQL</SelectItem>
+                      <SelectItem value="mysql">마이에스큐엘 8.0</SelectItem>
+                      <SelectItem value="postgres">
+                        포스트그레에스큐엘 15
+                      </SelectItem>
+                      <SelectItem value="mariadb">마리아디비 10.6</SelectItem>
+                      <SelectItem value="aurora-mysql">
+                        오로라 마이에스큐엘
+                      </SelectItem>
                       <SelectItem value="aurora-postgres">
-                        Aurora PostgreSQL
+                        오로라 포스트그레에스큐엘
                       </SelectItem>
                     </SelectContent>
                   </Select>
@@ -225,19 +433,19 @@ export default function RDS() {
                     </SelectTrigger>
                     <SelectContent className="bg-popover border-border">
                       <SelectItem value="db.t3.micro">
-                        db.t3.micro (2 vCPU, 1GB)
+                        티3 마이크로 (가상 처리장치 2개, 메모리 1기가바이트)
                       </SelectItem>
                       <SelectItem value="db.t3.small">
-                        db.t3.small (2 vCPU, 2GB)
+                        티3 스몰 (가상 처리장치 2개, 메모리 2기가바이트)
                       </SelectItem>
                       <SelectItem value="db.t3.medium">
-                        db.t3.medium (2 vCPU, 4GB)
+                        티3 미디엄 (가상 처리장치 2개, 메모리 4기가바이트)
                       </SelectItem>
                       <SelectItem value="db.r5.large">
-                        db.r5.large (2 vCPU, 16GB)
+                        알5 라지 (가상 처리장치 2개, 메모리 16기가바이트)
                       </SelectItem>
                       <SelectItem value="db.r5.xlarge">
-                        db.r5.xlarge (4 vCPU, 32GB)
+                        알5 엑스라지 (가상 처리장치 4개, 메모리 32기가바이트)
                       </SelectItem>
                     </SelectContent>
                   </Select>
@@ -245,30 +453,129 @@ export default function RDS() {
               </div>
 
               <div className="grid gap-2">
-                <Label>모듈 적용</Label>
+                <Label>템플릿 적용</Label>
                 <Select
-                  value={selectedModule}
-                  onValueChange={setSelectedModule}
+                  value={selectedTemplateId}
+                  onValueChange={setSelectedTemplateId}
                 >
                   <SelectTrigger className="bg-secondary border-border">
-                    <SelectValue placeholder="모듈 선택 (선택사항)" />
+                    <SelectValue placeholder="템플릿 선택 (필수)" />
                   </SelectTrigger>
                   <SelectContent className="bg-popover border-border">
-                    <SelectItem value="production-tags">
-                      production-tags
-                    </SelectItem>
-                    <SelectItem value="staging-tags">staging-tags</SelectItem>
-                    <SelectItem value="rds-standard-options">
-                      rds-standard-options
-                    </SelectItem>
-                    <SelectItem value="rds-security-group">
-                      rds-security-group
-                    </SelectItem>
+                    {templateOptions.length === 0 ? (
+                      <SelectItem value="empty" disabled>
+                        등록된 템플릿 없음
+                      </SelectItem>
+                    ) : (
+                      templateOptions.map((template) => (
+                        <SelectItem
+                          key={template.id}
+                          value={String(template.id)}
+                        >
+                          {template.name}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               </div>
 
-              {selectedModule && <ModulePreview moduleName={selectedModule} />}
+              {templateDefaults && (
+                <div className="rounded-lg border border-dashed border-border bg-secondary/30 p-3 text-xs text-muted-foreground">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-muted-foreground">필수 태그</span>
+                    {templateDefaults.mandatoryTagKeys.length === 0 ? (
+                      <span className="text-muted-foreground">없음</span>
+                    ) : (
+                      templateDefaults.mandatoryTagKeys.map((key) => (
+                        <Badge
+                          key={key}
+                          variant="outline"
+                          className="text-[10px]"
+                        >
+                          {key}
+                        </Badge>
+                      ))
+                    )}
+                  </div>
+                  {templateDefaults.mandatoryTagKeys.length > 0 && (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      필수 태그 값은 프로비저닝 기본값에서 입력해야 합니다.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <div className="grid gap-2">
+                <div className="flex items-center justify-between">
+                  <Label>모듈 추가</Label>
+                  <Badge variant="outline">
+                    {selectedModuleIds.length}개 선택
+                  </Badge>
+                </div>
+                {availableModules.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-border p-4 text-center text-sm text-muted-foreground">
+                    추가 가능한 모듈이 없습니다.
+                  </div>
+                ) : (
+                  <ScrollArea className="h-[200px] rounded-lg border border-border bg-secondary/30">
+                    <div className="space-y-2 p-3">
+                      {availableModules.map((module) => {
+                        const isChecked = selectedModuleIds.includes(module.id);
+                        return (
+                          <div
+                            key={module.id}
+                            className={`flex items-start gap-3 rounded-md border px-3 py-2 transition-colors ${
+                              isChecked
+                                ? "border-primary/40 bg-primary/5"
+                                : "border-border bg-background"
+                            }`}
+                          >
+                            <Checkbox
+                              id={`rds-module-${module.id}`}
+                              checked={isChecked}
+                              onCheckedChange={(checked) =>
+                                handleToggleModule(module.id, Boolean(checked))
+                              }
+                            />
+                            <Label
+                              htmlFor={`rds-module-${module.id}`}
+                              className="flex-1 cursor-pointer"
+                            >
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px]"
+                                >
+                                  {module.moduleType}
+                                </Badge>
+                                <span className="text-sm font-medium text-foreground">
+                                  {module.name}
+                                </span>
+                              </div>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {module.description || "설명이 없습니다."}
+                              </p>
+                            </Label>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </ScrollArea>
+                )}
+              </div>
+
+              {defaultsError && (
+                <p className="text-xs text-destructive">{defaultsError}</p>
+              )}
+
+              <ModulePreview
+                title="프로비저닝 기본값"
+                subtitle={previewSubtitle}
+                state={provisioningState}
+                isLoading={defaultsLoading}
+                onTagChange={handleTagChange}
+              />
             </div>
 
             <DialogFooter>
@@ -359,7 +666,7 @@ export default function RDS() {
                     <td className="px-4 py-4">
                       <div>
                         <p className="text-sm text-foreground">
-                          {instance.engine}
+                          {formatEngine(instance.engine)}
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {instance.engineVersion}
@@ -368,7 +675,7 @@ export default function RDS() {
                     </td>
                     <td className="px-4 py-4">
                       <Badge variant="outline" className="font-mono text-xs">
-                        {instance.instanceClass}
+                        {formatInstanceClass(instance.instanceClass)}
                       </Badge>
                     </td>
                     <td className="px-4 py-4">

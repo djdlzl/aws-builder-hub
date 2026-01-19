@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -19,6 +20,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -50,6 +52,22 @@ import { toast } from "sonner";
 import { ModulePreview } from "@/components/modules/ModulePreview";
 import { API_CONFIG, buildApiUrl } from "@/config/api";
 import { useAWSContext } from "@/hooks/use-aws-context";
+import {
+  fetchInstanceTemplates,
+  fetchProvisioningModules,
+  fetchTemplateDefaults,
+} from "@/lib/api/provisioning-defaults";
+import {
+  emptyProvisioningState,
+  mergeProvisioningDefaults,
+  toProvisioningDefaultsSource,
+} from "@/lib/provisioning";
+import type {
+  InstanceTemplateResponse,
+  ModuleDetailResponse,
+  ProvisioningFormState,
+  TemplateDefaultResponse,
+} from "@/types/provisioning";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 
@@ -80,6 +98,17 @@ const statusLabels: Record<string, string> = {
   terminated: "종료됨",
 };
 
+const instanceTypeLabels: Record<string, string> = {
+  "t3.micro": "티3 마이크로",
+  "t3.small": "티3 스몰",
+  "t3.medium": "티3 미디엄",
+  "t3.large": "티3 라지",
+  "c5.xlarge": "씨5 엑스라지",
+};
+
+const formatInstanceType = (type: string) =>
+  instanceTypeLabels[type] ?? "알 수 없는 유형";
+
 export default function EC2() {
   const [instances, setInstances] = useState<EC2Instance[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -95,7 +124,7 @@ export default function EC2() {
 
   useEffect(() => {
     const fetchInstances = async () => {
-      // Check if demo admin user is logged in
+      // 데모 관리자 로그인 여부 확인
       const isDemoAdmin =
         localStorage.getItem("cloudforge_auth_token") ===
         "mock-token-admin-demo";
@@ -103,94 +132,94 @@ export default function EC2() {
         localStorage.getItem("cloudforge_auth_token") === "mock-token-admin";
 
       if (isDemoAdmin) {
-        // Load dummy EC2 instances for admin_demo
+        // 데모 관리자용 더미 가상 서버 인스턴스 로드
         const dummyInstances: EC2Instance[] = [
           {
             id: "i-1234567890abcdef0",
-            name: "demo-web-server-01",
+            name: "데모-웹-서버-01",
             type: "t3.medium",
             status: "running",
             publicIp: "54.180.1.100",
             privateIp: "10.0.1.100",
             az: "ap-northeast-2a",
-            accountName: "Demo Production Account",
+            accountName: "데모 운영 계정",
             region: "ap-northeast-2",
           },
           {
             id: "i-0987654321fedcba0",
-            name: "demo-app-server-01",
+            name: "데모-앱-서버-01",
             type: "t3.large",
             status: "running",
             publicIp: "54.180.1.101",
             privateIp: "10.0.1.101",
             az: "ap-northeast-2b",
-            accountName: "Demo Production Account",
+            accountName: "데모 운영 계정",
             region: "ap-northeast-2",
           },
           {
             id: "i-abcdef1234567890",
-            name: "demo-dev-server-01",
+            name: "데모-개발-서버-01",
             type: "t3.micro",
             status: "stopped",
             publicIp: "-",
             privateIp: "10.0.2.50",
             az: "ap-northeast-2a",
-            accountName: "Demo Development Account",
+            accountName: "데모 개발 계정",
             region: "ap-northeast-2",
           },
           {
             id: "i-fedcba0987654321",
-            name: "demo-dev-server-02",
+            name: "데모-개발-서버-02",
             type: "t3.small",
             status: "running",
             publicIp: "54.180.1.102",
             privateIp: "10.0.2.51",
             az: "ap-northeast-2c",
-            accountName: "Demo Development Account",
+            accountName: "데모 개발 계정",
             region: "ap-northeast-2",
           },
           {
             id: "i-1234567890abcde0",
-            name: "demo-staging-server",
+            name: "데모-스테이징-서버",
             type: "t3.medium",
             status: "pending",
             publicIp: "-",
             privateIp: "10.0.3.100",
             az: "ap-northeast-2a",
-            accountName: "Demo Staging Account",
+            accountName: "데모 스테이징 계정",
             region: "ap-northeast-2",
           },
           {
             id: "i-0987654321abcde0",
-            name: "demo-batch-server-01",
+            name: "데모-배치-서버-01",
             type: "c5.xlarge",
             status: "running",
             publicIp: "54.180.1.103",
             privateIp: "10.0.1.200",
             az: "ap-northeast-2b",
-            accountName: "Demo Production Account",
+            accountName: "데모 운영 계정",
             region: "ap-northeast-2",
           },
           {
             id: "i-abcdef1234fedcba0",
-            name: "demo-test-server-01",
+            name: "데모-테스트-서버-01",
             type: "t3.micro",
             status: "stopped",
             publicIp: "-",
             privateIp: "10.0.2.52",
             az: "ap-northeast-2a",
-            accountName: "Demo Development Account",
+            accountName: "데모 개발 계정",
             region: "ap-northeast-2",
           },
           {
             id: "i-5678901234abcdefg",
-            name: "demo-db-server-01",
+            name: "데모-데이터베이스-서버-01",
             type: "t3.large",
             status: "running",
             publicIp: "54.180.1.104",
             privateIp: "10.0.1.150",
             az: "ap-northeast-2c",
-            accountName: "Demo Production Account",
+            accountName: "데모 운영 계정",
             region: "ap-northeast-2",
           },
         ];
@@ -201,28 +230,28 @@ export default function EC2() {
       }
 
       if (isMockAdmin) {
-        // Load dummy EC2 instances for mock admin
+        // 모의 관리자용 더미 가상 서버 인스턴스 로드
         const dummyInstances: EC2Instance[] = [
           {
             id: "i-1111111111111111",
-            name: "web-server-prod-01",
+            name: "운영-웹-서버-01",
             type: "t3.medium",
             status: "running",
             publicIp: "54.180.1.10",
             privateIp: "10.0.1.10",
             az: "ap-northeast-2a",
-            accountName: "Production Account",
+            accountName: "운영 계정",
             region: "ap-northeast-2",
           },
           {
             id: "i-2222222222222222",
-            name: "app-server-prod-01",
+            name: "운영-앱-서버-01",
             type: "t3.large",
             status: "running",
             publicIp: "54.180.1.11",
             privateIp: "10.0.1.11",
             az: "ap-northeast-2b",
-            accountName: "Production Account",
+            accountName: "운영 계정",
             region: "ap-northeast-2",
           },
         ];
@@ -232,7 +261,7 @@ export default function EC2() {
         return;
       }
 
-      // For real users, check if they have accounts
+      // 실제 사용자 계정 연결 여부 확인
       if (accounts.length === 0) {
         setIsLoading(false);
         return;
@@ -271,7 +300,7 @@ export default function EC2() {
           setInstances(list);
         }
       } catch (error) {
-        console.error("Failed to fetch EC2 instances:", error);
+        console.error("가상 서버 인스턴스를 불러오지 못했습니다:", error);
       } finally {
         setIsLoading(false);
       }
@@ -281,19 +310,146 @@ export default function EC2() {
   const [createOpen, setCreateOpen] = useState(false);
   const [instanceName, setInstanceName] = useState("");
   const [instanceType, setInstanceType] = useState("");
-  const [selectedModule, setSelectedModule] = useState("");
-  
-  // Stop schedule dialog state
+  const [templateOptions, setTemplateOptions] = useState<
+    InstanceTemplateResponse[]
+  >([]);
+  const [moduleOptions, setModuleOptions] = useState<ModuleDetailResponse[]>(
+    []
+  );
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [selectedModuleIds, setSelectedModuleIds] = useState<number[]>([]);
+  const [templateDefaults, setTemplateDefaults] =
+    useState<TemplateDefaultResponse | null>(null);
+  const [defaultsLoading, setDefaultsLoading] = useState(false);
+  const [defaultsError, setDefaultsError] = useState<string | null>(null);
+  const [provisioningDefaults, setProvisioningDefaults] =
+    useState<ProvisioningFormState>(emptyProvisioningState);
+  const [provisioningState, setProvisioningState] =
+    useState<ProvisioningFormState>(emptyProvisioningState);
+
+  // 중지 예약 다이얼로그 상태
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
-  const [selectedInstance, setSelectedInstance] = useState<EC2Instance | null>(null);
-  const [scheduledDate, setScheduledDate] = useState<Date | undefined>(undefined);
+  const [selectedInstance, setSelectedInstance] = useState<EC2Instance | null>(
+    null
+  );
+  const [scheduledDate, setScheduledDate] = useState<Date | undefined>(
+    undefined
+  );
   const [scheduledTime, setScheduledTime] = useState("18:00");
 
-  // Terminal expandable state - tracks which instance has terminal open
-  const [expandedTerminalId, setExpandedTerminalId] = useState<string | null>(null);
+  // 터미널 확장 상태 - 열려있는 인스턴스 추적
+  const [expandedTerminalId, setExpandedTerminalId] = useState<string | null>(
+    null
+  );
+
+  useEffect(() => {
+    const loadOptions = async () => {
+      try {
+        const [modules, templates] = await Promise.all([
+          fetchProvisioningModules(),
+          fetchInstanceTemplates(),
+        ]);
+        setModuleOptions(modules.filter((module) => module.isActive));
+        setTemplateOptions(
+          templates.filter(
+            (template) =>
+              template.isActive && template.templateType === "INSTANCE"
+          )
+        );
+      } catch (error) {
+        console.error("프로비저닝 기본값을 불러오지 못했습니다:", error);
+        toast.error("프로비저닝 기본값을 불러오지 못했습니다.");
+      }
+    };
+    loadOptions();
+  }, []);
+
+  useEffect(() => {
+    const loadTemplateDefaults = async () => {
+      if (!selectedTemplateId) {
+        setTemplateDefaults(null);
+        setDefaultsError(null);
+        setDefaultsLoading(false);
+        return;
+      }
+      setDefaultsLoading(true);
+      setDefaultsError(null);
+      setTemplateDefaults(null);
+      try {
+        const detail = await fetchTemplateDefaults(Number(selectedTemplateId));
+        setTemplateDefaults(detail);
+      } catch (error) {
+        console.error("템플릿 기본값을 불러오지 못했습니다:", error);
+        setDefaultsError("템플릿 기본값을 불러오지 못했습니다.");
+        toast.error("템플릿 기본값을 불러오지 못했습니다.");
+      } finally {
+        setDefaultsLoading(false);
+      }
+    };
+
+    loadTemplateDefaults();
+  }, [selectedTemplateId]);
+
+  useEffect(() => {
+    if (!templateDefaults) {
+      return;
+    }
+    const templateModuleIds = new Set(
+      templateDefaults.modules.map((module) => module.moduleId)
+    );
+    setSelectedModuleIds((prev) =>
+      prev.filter((moduleId) => !templateModuleIds.has(moduleId))
+    );
+  }, [templateDefaults]);
+
+  useEffect(() => {
+    const selectedModules = selectedModuleIds
+      .map((moduleId) => moduleOptions.find((module) => module.id === moduleId))
+      .filter((module): module is ModuleDetailResponse => module !== undefined);
+    const sources = [] as ReturnType<typeof toProvisioningDefaultsSource>[];
+    if (selectedModules.length > 0) {
+      sources.push(
+        ...selectedModules.map((module) => toProvisioningDefaultsSource(module))
+      );
+    }
+    if (templateDefaults) {
+      sources.push(
+        ...templateDefaults.modules.map((module) =>
+          toProvisioningDefaultsSource(module)
+        )
+      );
+    }
+    const merged = mergeProvisioningDefaults(sources);
+    setProvisioningDefaults(merged);
+    setProvisioningState(merged);
+  }, [templateDefaults, selectedModuleIds, moduleOptions]);
+
+  useEffect(() => {
+    if (provisioningDefaults.instanceOptions?.instanceType) {
+      setInstanceType(provisioningDefaults.instanceOptions.instanceType);
+    }
+  }, [provisioningDefaults]);
+
+  const handleTagChange = (tagKey: string, value: string) => {
+    setProvisioningState((prev) => ({
+      ...prev,
+      tags: prev.tags.map((tag) =>
+        tag.tagKey === tagKey ? { ...tag, tagValue: value } : tag
+      ),
+    }));
+  };
+
+  const handleToggleModule = (moduleId: number, checked: boolean) => {
+    setSelectedModuleIds((prev) => {
+      if (checked) {
+        return prev.includes(moduleId) ? prev : [...prev, moduleId];
+      }
+      return prev.filter((id) => id !== moduleId);
+    });
+  };
 
   const handleOpenTerminal = (instance: EC2Instance) => {
-    // Toggle terminal - if same instance clicked, close it
+    // 터미널 토글 - 같은 인스턴스를 클릭하면 닫기
     if (expandedTerminalId === instance.id) {
       setExpandedTerminalId(null);
     } else {
@@ -306,15 +462,30 @@ export default function EC2() {
   };
 
   const handleCreate = () => {
+    const missingMandatoryTags = provisioningState.tags.filter(
+      (tag) => tag.isMandatory && !tag.tagValue?.trim()
+    ).length;
+    if (missingMandatoryTags > 0) {
+      toast.error("필수 태그 값을 입력해주세요.");
+      return;
+    }
+    if (!selectedTemplateId) {
+      toast.error("템플릿을 선택해주세요.");
+      return;
+    }
     if (!instanceName || !instanceType) {
       toast.error("필수 항목을 입력해주세요.");
       return;
     }
-    toast.success("EC2 인스턴스 생성이 시작되었습니다.");
+    toast.success("가상 서버 인스턴스 생성이 시작되었습니다.");
     setCreateOpen(false);
     setInstanceName("");
     setInstanceType("");
-    setSelectedModule("");
+    setSelectedTemplateId("");
+    setSelectedModuleIds([]);
+    setTemplateDefaults(null);
+    setProvisioningDefaults(emptyProvisioningState);
+    setProvisioningState(emptyProvisioningState);
   };
 
   const handleScheduleStop = (instance: EC2Instance) => {
@@ -328,15 +499,19 @@ export default function EC2() {
       toast.error("날짜를 선택해주세요.");
       return;
     }
-    
+
     // Update instance with scheduled stop date
-    setInstances(prev => prev.map(inst => 
-      inst.id === selectedInstance.id 
-        ? { ...inst, scheduledStopDate: scheduledDate }
-        : inst
-    ));
-    
-    toast.success(`${selectedInstance.name} 인스턴스의 Stop 예정일이 설정되었습니다.`);
+    setInstances((prev) =>
+      prev.map((inst) =>
+        inst.id === selectedInstance.id
+          ? { ...inst, scheduledStopDate: scheduledDate }
+          : inst
+      )
+    );
+
+    toast.success(
+      `${selectedInstance.name} 인스턴스의 Stop 예정일이 설정되었습니다.`
+    );
     setScheduleDialogOpen(false);
     setSelectedInstance(null);
     setScheduledDate(undefined);
@@ -344,18 +519,46 @@ export default function EC2() {
 
   const handleCancelSchedule = () => {
     if (!selectedInstance) return;
-    
-    setInstances(prev => prev.map(inst => 
-      inst.id === selectedInstance.id 
-        ? { ...inst, scheduledStopDate: undefined }
-        : inst
-    ));
-    
-    toast.success(`${selectedInstance.name} 인스턴스의 Stop 예정이 취소되었습니다.`);
+
+    setInstances((prev) =>
+      prev.map((inst) =>
+        inst.id === selectedInstance.id
+          ? { ...inst, scheduledStopDate: undefined }
+          : inst
+      )
+    );
+
+    toast.success(
+      `${selectedInstance.name} 인스턴스의 Stop 예정이 취소되었습니다.`
+    );
     setScheduleDialogOpen(false);
     setSelectedInstance(null);
     setScheduledDate(undefined);
   };
+
+  const selectedTemplate = templateOptions.find(
+    (template) => template.id === Number(selectedTemplateId)
+  );
+  const selectedModules = selectedModuleIds
+    .map((moduleId) => moduleOptions.find((module) => module.id === moduleId))
+    .filter((module): module is ModuleDetailResponse => module !== undefined);
+  const availableModules = useMemo(() => {
+    if (!templateDefaults) {
+      return moduleOptions;
+    }
+    const templateModuleIds = new Set(
+      templateDefaults.modules.map((module) => module.moduleId)
+    );
+    return moduleOptions.filter((module) => !templateModuleIds.has(module.id));
+  }, [moduleOptions, templateDefaults]);
+  const selectedModuleNames = selectedModules.map((module) => module.name);
+  const previewSubtitle = selectedTemplate
+    ? selectedModuleNames.length > 0
+      ? `${selectedTemplate.name} + ${selectedModuleNames.join(", ")}`
+      : selectedTemplate.name
+    : selectedModuleNames.length > 0
+    ? selectedModuleNames.join(", ")
+    : undefined;
 
   if (isLoading) {
     return (
@@ -365,7 +568,7 @@ export default function EC2() {
     );
   }
 
-  // Check if demo or mock admin - they should see instances even with empty accounts from context
+  // 데모/모의 관리자 여부 확인 - 계정이 없어도 인스턴스 표시
   const isDemoOrMockAdmin =
     localStorage.getItem("cloudforge_auth_token") === "mock-token-admin-demo" ||
     localStorage.getItem("cloudforge_auth_token") === "mock-token-admin";
@@ -374,7 +577,9 @@ export default function EC2() {
     return (
       <div className="space-y-6 animate-fade-in">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">EC2 인스턴스</h1>
+          <h1 className="text-3xl font-bold text-foreground">
+            가상 서버 인스턴스
+          </h1>
           <p className="text-muted-foreground mt-1">
             가상 서버 인스턴스를 관리합니다
           </p>
@@ -382,9 +587,11 @@ export default function EC2() {
         <div className="rounded-xl border border-border bg-card p-12 text-center">
           <AlertCircle className="h-16 w-16 mx-auto mb-4 text-muted-foreground opacity-50" />
           <h2 className="text-xl font-semibold text-foreground mb-2">
-            연결된 AWS 계정이 없습니다
+            연결된 클라우드 계정이 없습니다
           </h2>
-          <p className="text-muted-foreground">AWS 계정을 먼저 연결해주세요.</p>
+          <p className="text-muted-foreground">
+            클라우드 계정을 먼저 연결해주세요.
+          </p>
         </div>
       </div>
     );
@@ -394,7 +601,9 @@ export default function EC2() {
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">EC2 인스턴스</h1>
+          <h1 className="text-3xl font-bold text-foreground">
+            가상 서버 인스턴스
+          </h1>
           <p className="text-muted-foreground mt-1">
             가상 서버 인스턴스를 관리합니다
           </p>
@@ -410,10 +619,10 @@ export default function EC2() {
           <DialogContent className="sm:max-w-[600px] bg-card border-border">
             <DialogHeader>
               <DialogTitle className="text-foreground">
-                새 EC2 인스턴스 생성
+                새 가상 서버 인스턴스 생성
               </DialogTitle>
               <DialogDescription className="text-muted-foreground">
-                새로운 EC2 인스턴스를 생성합니다.
+                새로운 가상 서버 인스턴스를 생성합니다.
               </DialogDescription>
             </DialogHeader>
 
@@ -424,7 +633,7 @@ export default function EC2() {
                   id="name"
                   value={instanceName}
                   onChange={(e) => setInstanceName(e.target.value)}
-                  placeholder="예: web-server-prod-01"
+                  placeholder="예: 운영-웹-서버-01"
                   className="bg-secondary border-border"
                 />
               </div>
@@ -437,46 +646,148 @@ export default function EC2() {
                   </SelectTrigger>
                   <SelectContent className="bg-popover border-border">
                     <SelectItem value="t3.micro">
-                      t3.micro (1 vCPU, 1GB)
+                      티3 마이크로 (가상 처리장치 1개, 메모리 1기가바이트)
                     </SelectItem>
                     <SelectItem value="t3.small">
-                      t3.small (2 vCPU, 2GB)
+                      티3 스몰 (가상 처리장치 2개, 메모리 2기가바이트)
                     </SelectItem>
                     <SelectItem value="t3.medium">
-                      t3.medium (2 vCPU, 4GB)
+                      티3 미디엄 (가상 처리장치 2개, 메모리 4기가바이트)
                     </SelectItem>
                     <SelectItem value="t3.large">
-                      t3.large (2 vCPU, 8GB)
+                      티3 라지 (가상 처리장치 2개, 메모리 8기가바이트)
                     </SelectItem>
                     <SelectItem value="c5.xlarge">
-                      c5.xlarge (4 vCPU, 8GB)
+                      씨5 엑스라지 (가상 처리장치 4개, 메모리 8기가바이트)
                     </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="grid gap-2">
-                <Label>모듈 적용</Label>
+                <Label>템플릿 적용</Label>
                 <Select
-                  value={selectedModule}
-                  onValueChange={setSelectedModule}
+                  value={selectedTemplateId}
+                  onValueChange={setSelectedTemplateId}
                 >
                   <SelectTrigger className="bg-secondary border-border">
-                    <SelectValue placeholder="모듈 선택 (선택사항)" />
+                    <SelectValue placeholder="템플릿 선택 (필수)" />
                   </SelectTrigger>
                   <SelectContent className="bg-popover border-border">
-                    <SelectItem value="production-tags">
-                      production-tags
-                    </SelectItem>
-                    <SelectItem value="staging-tags">staging-tags</SelectItem>
-                    <SelectItem value="ec2-standard-options">
-                      ec2-standard-options
-                    </SelectItem>
+                    {templateOptions.length === 0 ? (
+                      <SelectItem value="empty" disabled>
+                        등록된 템플릿 없음
+                      </SelectItem>
+                    ) : (
+                      templateOptions.map((template) => (
+                        <SelectItem
+                          key={template.id}
+                          value={String(template.id)}
+                        >
+                          {template.name}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               </div>
 
-              {selectedModule && <ModulePreview moduleName={selectedModule} />}
+              {templateDefaults && (
+                <div className="rounded-lg border border-dashed border-border bg-secondary/30 p-3 text-xs text-muted-foreground">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-muted-foreground">필수 태그</span>
+                    {templateDefaults.mandatoryTagKeys.length === 0 ? (
+                      <span className="text-muted-foreground">없음</span>
+                    ) : (
+                      templateDefaults.mandatoryTagKeys.map((key) => (
+                        <Badge
+                          key={key}
+                          variant="outline"
+                          className="text-[10px]"
+                        >
+                          {key}
+                        </Badge>
+                      ))
+                    )}
+                  </div>
+                  {templateDefaults.mandatoryTagKeys.length > 0 && (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      필수 태그 값은 프로비저닝 기본값에서 입력해야 합니다.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <div className="grid gap-2">
+                <div className="flex items-center justify-between">
+                  <Label>모듈 추가</Label>
+                  <Badge variant="outline">
+                    {selectedModuleIds.length}개 선택
+                  </Badge>
+                </div>
+                {availableModules.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-border p-4 text-center text-sm text-muted-foreground">
+                    추가 가능한 모듈이 없습니다.
+                  </div>
+                ) : (
+                  <ScrollArea className="h-[200px] rounded-lg border border-border bg-secondary/30">
+                    <div className="space-y-2 p-3">
+                      {availableModules.map((module) => {
+                        const isChecked = selectedModuleIds.includes(module.id);
+                        return (
+                          <div
+                            key={module.id}
+                            className={`flex items-start gap-3 rounded-md border px-3 py-2 transition-colors ${
+                              isChecked
+                                ? "border-primary/40 bg-primary/5"
+                                : "border-border bg-background"
+                            }`}
+                          >
+                            <Checkbox
+                              id={`ec2-module-${module.id}`}
+                              checked={isChecked}
+                              onCheckedChange={(checked) =>
+                                handleToggleModule(module.id, Boolean(checked))
+                              }
+                            />
+                            <Label
+                              htmlFor={`ec2-module-${module.id}`}
+                              className="flex-1 cursor-pointer"
+                            >
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px]"
+                                >
+                                  {module.moduleType}
+                                </Badge>
+                                <span className="text-sm font-medium text-foreground">
+                                  {module.name}
+                                </span>
+                              </div>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {module.description || "설명이 없습니다."}
+                              </p>
+                            </Label>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </ScrollArea>
+                )}
+              </div>
+
+              {defaultsError && (
+                <p className="text-xs text-destructive">{defaultsError}</p>
+              )}
+
+              <ModulePreview
+                title="프로비저닝 기본값"
+                subtitle={previewSubtitle}
+                state={provisioningState}
+                isLoading={defaultsLoading}
+                onTagChange={handleTagChange}
+              />
             </div>
 
             <DialogFooter>
@@ -523,10 +834,10 @@ export default function EC2() {
                 상태
               </th>
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                퍼블릭 IP
+                공인 주소
               </th>
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                프라이빗 IP
+                사설 주소
               </th>
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 가용영역
@@ -541,7 +852,9 @@ export default function EC2() {
               <>
                 <tr
                   key={instance.id}
-                  className={`hover:bg-accent/50 transition-colors ${expandedTerminalId === instance.id ? "bg-accent/30" : ""}`}
+                  className={`hover:bg-accent/50 transition-colors ${
+                    expandedTerminalId === instance.id ? "bg-accent/30" : ""
+                  }`}
                 >
                   <td className="px-4 py-4">
                     <div className="flex items-center gap-3">
@@ -560,7 +873,7 @@ export default function EC2() {
                   </td>
                   <td className="px-4 py-4">
                     <Badge variant="outline" className="font-mono text-xs">
-                      {instance.type}
+                      {formatInstanceType(instance.type)}
                     </Badge>
                   </td>
                   <td className="px-4 py-4">
@@ -586,7 +899,10 @@ export default function EC2() {
                   <td className="px-4 py-4">
                     <div className="flex items-center justify-end gap-1">
                       {instance.scheduledStopDate && (
-                        <Badge variant="outline" className="mr-2 text-xs bg-warning/10 text-warning border-warning/20">
+                        <Badge
+                          variant="outline"
+                          className="mr-2 text-xs bg-warning/10 text-warning border-warning/20"
+                        >
                           <Clock className="h-3 w-3 mr-1" />
                           {format(instance.scheduledStopDate, "MM/dd HH:mm")}
                         </Badge>
@@ -613,34 +929,45 @@ export default function EC2() {
                       </Button>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                          >
                             <MoreHorizontal className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="bg-popover border-border">
-                          <DropdownMenuItem 
+                        <DropdownMenuContent
+                          align="end"
+                          className="bg-popover border-border"
+                        >
+                          <DropdownMenuItem
                             onClick={() => handleOpenTerminal(instance)}
                             disabled={instance.status !== "running"}
                           >
                             <Terminal className="h-4 w-4 mr-2" />
-                            {expandedTerminalId === instance.id ? "터미널 닫기" : "터미널 (SSM)"}
+                            {expandedTerminalId === instance.id
+                              ? "터미널 닫기"
+                              : "터미널 (원격 관리)"}
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleScheduleStop(instance)}>
+                          <DropdownMenuItem
+                            onClick={() => handleScheduleStop(instance)}
+                          >
                             <CalendarIcon className="h-4 w-4 mr-2" />
-                            Stop 예정일 설정
+                            중지 예정일 설정
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
                   </td>
                 </tr>
-                {/* Expandable Terminal Row */}
+                {/* 터미널 확장 행 */}
                 {expandedTerminalId === instance.id && (
                   <tr key={`${instance.id}-terminal`}>
                     <td colSpan={7} className="p-0">
-                      <div 
-                        className="border-t border-border bg-background animate-in slide-in-from-top-2 duration-200"
-                        style={{ height: "350px" }}
+                      <div
+                        className="border-t border-border bg-background animate-in slide-in-from-top-2 duration-200 overflow-hidden"
+                        style={{ height: "700px" }}
                       >
                         <SSMTerminal
                           instanceId={instance.id}
@@ -657,12 +984,13 @@ export default function EC2() {
         </table>
       </div>
 
-
-      {/* Stop 예정일 설정 Dialog */}
+      {/* 중지 예정일 설정 다이얼로그 */}
       <Dialog open={scheduleDialogOpen} onOpenChange={setScheduleDialogOpen}>
         <DialogContent className="sm:max-w-[400px] bg-card border-border">
           <DialogHeader>
-            <DialogTitle className="text-foreground">Stop 예정일 설정</DialogTitle>
+            <DialogTitle className="text-foreground">
+              중지 예정일 설정
+            </DialogTitle>
             <DialogDescription className="text-muted-foreground">
               {selectedInstance?.name} 인스턴스의 자동 중지 예정일을 설정합니다.
             </DialogDescription>
@@ -678,10 +1006,15 @@ export default function EC2() {
                     className="w-full justify-start text-left font-normal bg-secondary border-border"
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {scheduledDate ? format(scheduledDate, "PPP", { locale: ko }) : "날짜 선택"}
+                    {scheduledDate
+                      ? format(scheduledDate, "PPP", { locale: ko })
+                      : "날짜 선택"}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-0 bg-popover border-border" align="start">
+                <PopoverContent
+                  className="w-auto p-0 bg-popover border-border"
+                  align="start"
+                >
                   <Calendar
                     mode="single"
                     selected={scheduledDate}
@@ -715,7 +1048,10 @@ export default function EC2() {
             {selectedInstance?.scheduledStopDate && (
               <div className="p-3 rounded-lg bg-warning/10 border border-warning/20">
                 <p className="text-sm text-warning">
-                  현재 설정된 예정일: {format(selectedInstance.scheduledStopDate, "PPP p", { locale: ko })}
+                  현재 설정된 예정일:{" "}
+                  {format(selectedInstance.scheduledStopDate, "PPP p", {
+                    locale: ko,
+                  })}
                 </p>
               </div>
             )}
@@ -727,7 +1063,10 @@ export default function EC2() {
                 예정 취소
               </Button>
             )}
-            <Button variant="outline" onClick={() => setScheduleDialogOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setScheduleDialogOpen(false)}
+            >
               닫기
             </Button>
             <Button onClick={handleSaveSchedule}>저장</Button>

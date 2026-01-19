@@ -14,6 +14,7 @@ import RDS from "./pages/RDS";
 import S3 from "./pages/S3";
 import VPC from "./pages/VPC";
 import Modules from "./pages/Modules";
+import Templates from "./pages/Templates";
 import Settings from "./pages/Settings";
 import Login from "./pages/Login";
 import AWSAccounts from "./pages/AWSAccounts";
@@ -93,6 +94,16 @@ const App = () => (
                   }
                 />
                 <Route
+                  path="/templates"
+                  element={
+                    <ProtectedRoute>
+                      <MainLayout>
+                        <Templates />
+                      </MainLayout>
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
                   path="/settings"
                   element={
                     <ProtectedRoute>
@@ -103,7 +114,7 @@ const App = () => (
                   }
                 />
                 <Route
-                  path="/aws-accounts"
+                  path="/admin-settings"
                   element={
                     <ProtectedRoute requiredRole="admin">
                       <MainLayout>

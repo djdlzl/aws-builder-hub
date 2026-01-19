@@ -25,6 +25,31 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 // Storage key for auth token
 const AUTH_TOKEN_KEY = "cloudforge_auth_token";
 
+type ApiUser = {
+  id?: string | number;
+  email?: string;
+  name?: string;
+  role?: string;
+};
+
+const normalizeRole = (role?: string): UserRole => {
+  const normalized = role?.toUpperCase() ?? "";
+  if (normalized.includes("ADMIN")) {
+    return "admin";
+  }
+  return "developer";
+};
+
+const mapUser = (user: ApiUser | null): User | null => {
+  if (!user) return null;
+  return {
+    id: user.id ? String(user.id) : "",
+    email: user.email ?? "",
+    name: user.name ?? "",
+    role: normalizeRole(user.role),
+  };
+};
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [authState, setAuthState] = useState<AuthState>({
     user: null,
@@ -54,10 +79,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         );
 
         if (response.ok) {
-          const user = await response.json();
-          setAuthState({ user, isAuthenticated: true, isLoading: false });
+          const payload = await response.json();
+          const resultUser = payload.result || payload;
+          const mappedUser = mapUser(resultUser);
+
+          if (mappedUser) {
+            const serverRole = resultUser?.role;
+            if (serverRole) {
+              localStorage.setItem("user_role", serverRole);
+            } else {
+              localStorage.setItem("user_role", mappedUser.role.toUpperCase());
+            }
+
+            setAuthState({
+              user: mappedUser,
+              isAuthenticated: true,
+              isLoading: false,
+            });
+          } else {
+            localStorage.removeItem(AUTH_TOKEN_KEY);
+            localStorage.removeItem("access_token");
+            localStorage.removeItem("user_role");
+            setAuthState({
+              user: null,
+              isAuthenticated: false,
+              isLoading: false,
+            });
+          }
         } else {
           localStorage.removeItem(AUTH_TOKEN_KEY);
+          localStorage.removeItem("access_token");
+          localStorage.removeItem("user_role");
           setAuthState({
             user: null,
             isAuthenticated: false,
@@ -102,12 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           localStorage.setItem("user_role", user.role);
 
           setAuthState({
-            user: {
-              id: String(user.id),
-              email: user.email,
-              name: user.name,
-              role: user.role === "ADMIN" ? "admin" : "developer",
-            },
+            user: mapUser(user),
             isAuthenticated: true,
             isLoading: false,
           });
