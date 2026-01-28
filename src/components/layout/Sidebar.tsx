@@ -21,6 +21,7 @@ import {
   Building2,
   LogOut,
   Clock,
+  Network,
 } from "lucide-react";
 
 interface NavItem {
@@ -36,6 +37,7 @@ const navItems: NavItem[] = [
   { icon: Database, label: "RDS 데이터베이스", path: "/rds" },
   { icon: Layers, label: "S3 버킷", path: "/s3" },
   { icon: Globe, label: "VPC 네트워크", path: "/vpc" },
+  { icon: Network, label: "네트워크 토폴로지", path: "/network-topology", adminOnly: true },
   { icon: Shield, label: "IAM 정책", path: "/iam" },
   { icon: Tags, label: "모듈 관리", path: "/modules" },
   { icon: Box, label: "템플릿", path: "/templates" },

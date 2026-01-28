@@ -12,7 +12,7 @@ import { API_CONFIG, buildApiUrl } from "@/config/api";
 interface AuthContextType extends AuthState {
   login: (
     email: string,
-    password: string
+    password: string,
   ) => Promise<{ success: boolean; error?: string }>;
   loginWithOkta: () => void;
   logout: () => Promise<void>;
@@ -24,6 +24,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // Storage key for auth token
 const AUTH_TOKEN_KEY = "cloudforge_auth_token";
+const isMockAuthEnabled = import.meta.env.MODE === "development";
 
 type ApiUser = {
   id?: string | number;
@@ -60,7 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Check for existing session on mount
   useEffect(() => {
     const checkAuth = async () => {
-      const token = localStorage.getItem(AUTH_TOKEN_KEY);
+      const token = localStorage.getItem("access_token");
 
       if (!token) {
         setAuthState({ user: null, isAuthenticated: false, isLoading: false });
@@ -75,7 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               Authorization: `Bearer ${token}`,
               "Content-Type": "application/json",
             },
-          }
+          },
         );
 
         if (response.ok) {
@@ -97,7 +98,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               isLoading: false,
             });
           } else {
-            localStorage.removeItem(AUTH_TOKEN_KEY);
             localStorage.removeItem("access_token");
             localStorage.removeItem("user_role");
             setAuthState({
@@ -107,7 +107,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             });
           }
         } else {
-          localStorage.removeItem(AUTH_TOKEN_KEY);
           localStorage.removeItem("access_token");
           localStorage.removeItem("user_role");
           setAuthState({
@@ -118,7 +117,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } catch (error) {
         console.error("Auth check failed:", error);
-        // For demo purposes, if backend is not available, allow mock login
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("user_role");
         setAuthState({ user: null, isAuthenticated: false, isLoading: false });
       }
     };
@@ -129,7 +129,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(
     async (
       email: string,
-      password: string
+      password: string,
     ): Promise<{ success: boolean; error?: string }> => {
       try {
         const response = await fetch(
@@ -140,7 +140,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({ username: email, password }),
-          }
+          },
         );
 
         if (response.ok) {
@@ -149,7 +149,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const token = result.accessToken || result.token;
           const user = result.user;
 
-          localStorage.setItem(AUTH_TOKEN_KEY, token);
           localStorage.setItem("access_token", token);
           localStorage.setItem("user_role", user.role);
 
@@ -160,14 +159,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           });
           return { success: true };
         } else {
-          const error = await response.json();
+          let errorMessage = "로그인에 실패했습니다.";
+          try {
+            const error = await response.json();
+            errorMessage = error.message || errorMessage;
+          } catch (jsonError) {
+            console.error("Failed to parse login error response", jsonError);
+          }
+
+          if (response.status === 401) {
+            errorMessage = "아이디 또는 비밀번호가 틀렸습니다.";
+          }
+
           return {
             success: false,
-            error: error.message || "로그인에 실패했습니다.",
+            error: errorMessage,
           };
         }
       } catch (error) {
         console.error("Login failed:", error);
+        if (!isMockAuthEnabled) {
+          return { success: false, error: "백엔드 서버에 연결할 수 없습니다." };
+        }
+
         // Demo mode: allow mock login when backend is unavailable
         if (email === "admin_demo" && password === "password") {
           const mockUser: User = {
@@ -176,7 +190,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             name: "Admin Demo",
             role: "admin",
           };
-          localStorage.setItem(AUTH_TOKEN_KEY, "mock-token-admin-demo");
           setAuthState({
             user: mockUser,
             isAuthenticated: true,
@@ -190,7 +203,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             name: "Admin User",
             role: "admin",
           };
-          localStorage.setItem(AUTH_TOKEN_KEY, "mock-token-admin");
           setAuthState({
             user: mockUser,
             isAuthenticated: true,
@@ -204,7 +216,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             name: "Developer User",
             role: "developer",
           };
-          localStorage.setItem(AUTH_TOKEN_KEY, "mock-token-dev");
           setAuthState({
             user: mockUser,
             isAuthenticated: true,
@@ -215,7 +226,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { success: false, error: "백엔드 서버에 연결할 수 없습니다." };
       }
     },
-    []
+    [],
   );
 
   const loginWithOkta = useCallback(() => {
@@ -224,31 +235,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
-    try {
-      const token = localStorage.getItem(AUTH_TOKEN_KEY);
-      if (token) {
-        await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.AUTH.LOGOUT), {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-      }
-    } catch (error) {
-      console.error("Logout API call failed:", error);
-    } finally {
-      localStorage.removeItem(AUTH_TOKEN_KEY);
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("user_role");
-      setAuthState({ user: null, isAuthenticated: false, isLoading: false });
-    }
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("user_role");
+    setAuthState({ user: null, isAuthenticated: false, isLoading: false });
   }, []);
 
   const hasRole = useCallback(
     (role: UserRole): boolean => {
       return authState.user?.role === role;
     },
-    [authState.user]
+    [authState.user],
   );
 
   const isAdmin = authState.user?.role === "admin";

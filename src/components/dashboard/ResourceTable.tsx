@@ -8,6 +8,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { API_CONFIG, buildApiUrl } from "@/config/api";
+import { useAWSContext } from "@/hooks/use-aws-context";
 
 interface Resource {
   id: string;
@@ -16,6 +17,7 @@ interface Resource {
   status: "running" | "stopped" | "pending" | "error";
   region: string;
   createdAt: string;
+  accountId?: string;
   accountName?: string;
 }
 
@@ -47,6 +49,7 @@ const statusLabels = {
 export function ResourceTable({ accounts = [] }: ResourceTableProps) {
   const [resources, setResources] = useState<Resource[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const { selectedAccount } = useAWSContext();
 
   const getAuthHeaders = () => {
     const token = localStorage.getItem("access_token");
@@ -54,6 +57,49 @@ export function ResourceTable({ accounts = [] }: ResourceTableProps) {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     };
+  };
+
+  const isEc2Terminated = (state?: string) => {
+    const normalized = state?.toLowerCase() ?? "";
+    return normalized === "terminated" || normalized === "shutting-down";
+  };
+
+  const isRdsTerminated = (status?: string) => {
+    const normalized = status?.toLowerCase() ?? "";
+    return normalized === "deleted" || normalized === "deleting";
+  };
+
+  const formatDate = (value?: string | null) => {
+    if (!value) return "-";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return value;
+    }
+    return parsed.toISOString().split("T")[0];
+  };
+
+  const mapEc2Status = (state?: string): Resource["status"] => {
+    const normalized = state?.toLowerCase() ?? "";
+    if (normalized === "running") return "running";
+    if (normalized === "stopped" || normalized === "stopping") return "stopped";
+    if (normalized === "pending") return "pending";
+    return "error";
+  };
+
+  const mapRdsStatus = (status?: string): Resource["status"] => {
+    const normalized = status?.toLowerCase() ?? "";
+    if (normalized === "available") return "running";
+    if (normalized.includes("stop")) return "stopped";
+    if (
+      normalized.includes("creating") ||
+      normalized.includes("modifying") ||
+      normalized.includes("starting") ||
+      normalized.includes("rebooting") ||
+      normalized.includes("backing")
+    ) {
+      return "pending";
+    }
+    return "error";
   };
 
   useEffect(() => {
@@ -142,7 +188,12 @@ export function ResourceTable({ accounts = [] }: ResourceTableProps) {
           },
         ];
 
-        setResources(dummyResources);
+        // Filter by selected account if set
+        const filtered = selectedAccount
+          ? dummyResources.filter((r) => r.accountName === selectedAccount.name)
+          : dummyResources;
+
+        setResources(filtered);
         setIsLoading(false);
         return;
       }
@@ -188,19 +239,123 @@ export function ResourceTable({ accounts = [] }: ResourceTableProps) {
           },
         ];
 
-        setResources(dummyResources);
+        // Filter by selected account if set
+        const filtered = selectedAccount
+          ? dummyResources.filter((r) => r.accountName === selectedAccount.name)
+          : dummyResources;
+
+        setResources(filtered);
         setIsLoading(false);
         return;
       }
 
-      // TODO: Fetch actual resources from connected AWS accounts
-      // For now, show empty state since no resources are fetched yet
-      setIsLoading(false);
-      setResources([]);
+      try {
+        const [ec2Res, rdsRes, s3Res] = await Promise.all([
+          fetch(buildApiUrl(API_CONFIG.ENDPOINTS.AWS_RESOURCES.EC2), {
+            headers: getAuthHeaders(),
+          }),
+          fetch(buildApiUrl(API_CONFIG.ENDPOINTS.AWS_RESOURCES.RDS), {
+            headers: getAuthHeaders(),
+          }),
+          fetch(buildApiUrl(API_CONFIG.ENDPOINTS.AWS_RESOURCES.S3), {
+            headers: getAuthHeaders(),
+          }),
+        ]);
+
+        const ec2List = ec2Res.ok ? (await ec2Res.json()).results || [] : [];
+        const rdsList = rdsRes.ok ? (await rdsRes.json()).results || [] : [];
+        const s3List = s3Res.ok ? (await s3Res.json()).results || [] : [];
+
+        const ec2Resources: Resource[] = ec2List
+          .filter((item: { state?: string }) => !isEc2Terminated(item.state))
+          .map(
+            (item: {
+              instanceId: string;
+              name?: string;
+              state?: string;
+              region?: string;
+              launchTime?: string | null;
+              accountId?: string;
+              accountName?: string;
+            }) => ({
+              id: item.instanceId,
+              name: item.name ?? item.instanceId,
+              type: "EC2",
+              status: mapEc2Status(item.state),
+              region: item.region ?? "Unknown",
+              createdAt: formatDate(item.launchTime ?? null),
+              accountId: item.accountId,
+              accountName: item.accountName,
+            }),
+          );
+
+        const rdsResources: Resource[] = rdsList
+          .filter((item: { status?: string }) => !isRdsTerminated(item.status))
+          .map(
+            (item: {
+              dbInstanceIdentifier: string;
+              status?: string;
+              region?: string;
+              accountId?: string;
+              accountName?: string;
+            }) => ({
+              id: item.dbInstanceIdentifier,
+              name: item.dbInstanceIdentifier,
+              type: "RDS",
+              status: mapRdsStatus(item.status),
+              region: item.region ?? "Unknown",
+              createdAt: "-",
+              accountId: item.accountId,
+              accountName: item.accountName,
+            }),
+          );
+
+        const s3Resources: Resource[] = s3List.map(
+          (item: {
+            name: string;
+            region?: string | null;
+            creationDate?: string | null;
+            accountId?: string;
+            accountName?: string;
+          }) => ({
+            id: item.name,
+            name: item.name,
+            type: "S3",
+            status: "running",
+            region: item.region ?? "Unknown",
+            createdAt: formatDate(item.creationDate ?? null),
+            accountId: item.accountId,
+            accountName: item.accountName,
+          }),
+        );
+
+        const combined = [...ec2Resources, ...rdsResources, ...s3Resources];
+        const filtered = selectedAccount
+          ? combined.filter(
+              (item) =>
+                item.accountName === selectedAccount.name ||
+                item.accountId === selectedAccount.accountId,
+            )
+          : combined;
+
+        const sorted = filtered.sort((a, b) => {
+          const aTime = Date.parse(a.createdAt);
+          const bTime = Date.parse(b.createdAt);
+          if (Number.isNaN(aTime) || Number.isNaN(bTime)) return 0;
+          return bTime - aTime;
+        });
+
+        setResources(sorted);
+      } catch (error) {
+        console.error("Failed to fetch resources:", error);
+        setResources([]);
+      } finally {
+        setIsLoading(false);
+      }
     };
 
     fetchResources();
-  }, [accounts]);
+  }, [accounts, selectedAccount]);
 
   if (isLoading) {
     return (

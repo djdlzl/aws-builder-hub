@@ -13,6 +13,7 @@ import EC2 from "./pages/EC2";
 import RDS from "./pages/RDS";
 import S3 from "./pages/S3";
 import VPC from "./pages/VPC";
+import NetworkTopology from "./pages/NetworkTopology";
 import Modules from "./pages/Modules";
 import Templates from "./pages/Templates";
 import Settings from "./pages/Settings";
@@ -79,6 +80,16 @@ const App = () => (
                     <ProtectedRoute>
                       <MainLayout>
                         <VPC />
+                      </MainLayout>
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/network-topology"
+                  element={
+                    <ProtectedRoute>
+                      <MainLayout>
+                        <NetworkTopology />
                       </MainLayout>
                     </ProtectedRoute>
                   }

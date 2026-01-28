@@ -34,9 +34,20 @@ export const API_CONFIG = {
     // AWS Resource endpoints
     AWS_RESOURCES: {
       EC2: "/api/v1/resources/ec2",
+      EC2_REFRESH: "/api/v1/resources/ec2/refresh",
       S3: "/api/v1/resources/s3",
       RDS: "/api/v1/resources/rds",
+      RDS_REFRESH: "/api/v1/resources/rds/refresh",
       VPC: "/api/v1/resources/vpc",
+    },
+    // Network Topology endpoints
+    NETWORK_TOPOLOGY: {
+      TOPOLOGY: "/api/v1/network/topology",
+      CACHE_STATUS: "/api/v1/network/cache-status",
+      REFRESH: "/api/v1/network/refresh",
+      LAST_UPDATED: "/api/v1/network/last-updated",
+      SYNC_PROGRESS: "/api/v1/network/sync-progress",
+      HEALTH: "/api/v1/network/health",
     },
     // User management endpoints
     USERS: {
@@ -120,7 +131,7 @@ export function buildWsUrl(path: string): string {
 // Helper function to build full API URL
 export function buildApiUrl(
   endpoint: string,
-  params?: Record<string, string>
+  params?: Record<string, string>,
 ): string {
   let url = `${API_CONFIG.BASE_URL}${endpoint}`;
 

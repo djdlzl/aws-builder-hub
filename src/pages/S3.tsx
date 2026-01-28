@@ -74,7 +74,7 @@ const formatRegionLabel = (region?: string) =>
 export default function S3() {
   const [buckets, setBuckets] = useState<S3Bucket[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const { accounts } = useAWSContext();
+  const { accounts, selectedAccount } = useAWSContext();
 
   const getAuthHeaders = () => {
     const token = localStorage.getItem("access_token");
@@ -86,6 +86,71 @@ export default function S3() {
 
   useEffect(() => {
     const fetchBuckets = async () => {
+      // Check for demo/mock admin
+      const isDemoAdmin =
+        localStorage.getItem("cloudforge_auth_token") ===
+        "mock-token-admin-demo";
+      const isMockAdmin =
+        localStorage.getItem("cloudforge_auth_token") === "mock-token-admin";
+
+      if (isDemoAdmin) {
+        const dummyBuckets: S3Bucket[] = [
+          {
+            name: "demo-assets-prod",
+            region: "ap-northeast-2",
+            createdAt: "2024-01-01",
+            accountName: "Demo Production Account",
+          },
+          {
+            name: "demo-logs-prod",
+            region: "ap-northeast-2",
+            createdAt: "2024-01-02",
+            accountName: "Demo Production Account",
+          },
+          {
+            name: "demo-assets-dev",
+            region: "ap-northeast-2",
+            createdAt: "2024-01-03",
+            accountName: "Demo Development Account",
+          },
+          {
+            name: "demo-assets-staging",
+            region: "ap-northeast-2",
+            createdAt: "2024-01-04",
+            accountName: "Demo Staging Account",
+          },
+        ];
+        const filtered = selectedAccount
+          ? dummyBuckets.filter((b) => b.accountName === selectedAccount.name)
+          : dummyBuckets;
+        setBuckets(filtered);
+        setIsLoading(false);
+        return;
+      }
+
+      if (isMockAdmin) {
+        const dummyBuckets: S3Bucket[] = [
+          {
+            name: "prod-assets",
+            region: "ap-northeast-2",
+            createdAt: "2024-01-01",
+            accountName: "Production Account",
+          },
+          {
+            name: "dev-assets",
+            region: "ap-northeast-2",
+            createdAt: "2024-01-02",
+            accountName: "Development Account",
+          },
+        ];
+        const filtered = selectedAccount
+          ? dummyBuckets.filter((b) => b.accountName === selectedAccount.name)
+          : dummyBuckets;
+        setBuckets(filtered);
+        setIsLoading(false);
+        return;
+      }
+
       if (accounts.length === 0) {
         setIsLoading(false);
         return;
@@ -93,7 +158,7 @@ export default function S3() {
       try {
         const response = await fetch(
           buildApiUrl(API_CONFIG.ENDPOINTS.AWS_RESOURCES.S3),
-          { headers: getAuthHeaders() }
+          { headers: getAuthHeaders() },
         );
         if (response.ok) {
           const data = await response.json();
@@ -110,9 +175,16 @@ export default function S3() {
                 ? new Date(b.creationDate).toLocaleDateString()
                 : "-",
               accountName: b.accountName,
-            })
+            }),
           );
-          setBuckets(list);
+
+          const filtered = selectedAccount
+            ? list.filter(
+                (b: S3Bucket) => b.accountName === selectedAccount.name,
+              )
+            : list;
+
+          setBuckets(filtered);
         }
       } catch (error) {
         console.error("오브젝트 스토리지 버킷을 불러오지 못했습니다:", error);
@@ -121,7 +193,7 @@ export default function S3() {
       }
     };
     fetchBuckets();
-  }, [accounts]);
+  }, [accounts, selectedAccount]);
   const [createOpen, setCreateOpen] = useState(false);
   const [bucketName, setBucketName] = useState("");
   const [bucketRegion, setBucketRegion] = useState("");
@@ -130,7 +202,7 @@ export default function S3() {
     InstanceTemplateResponse[]
   >([]);
   const [moduleOptions, setModuleOptions] = useState<ModuleDetailResponse[]>(
-    []
+    [],
   );
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [selectedModuleIds, setSelectedModuleIds] = useState<number[]>([]);
@@ -153,8 +225,8 @@ export default function S3() {
         setTemplateOptions(
           templates.filter(
             (template) =>
-              template.isActive && template.templateType === "INSTANCE"
-          )
+              template.isActive && template.templateType === "INSTANCE",
+          ),
         );
       } catch (error) {
         console.error("프로비저닝 기본값을 불러오지 못했습니다:", error);
@@ -194,10 +266,10 @@ export default function S3() {
       return;
     }
     const templateModuleIds = new Set(
-      templateDefaults.modules.map((module) => module.moduleId)
+      templateDefaults.modules.map((module) => module.moduleId),
     );
     setSelectedModuleIds((prev) =>
-      prev.filter((moduleId) => !templateModuleIds.has(moduleId))
+      prev.filter((moduleId) => !templateModuleIds.has(moduleId)),
     );
   }, [templateDefaults]);
 
@@ -208,14 +280,16 @@ export default function S3() {
     const sources = [] as ReturnType<typeof toProvisioningDefaultsSource>[];
     if (selectedModules.length > 0) {
       sources.push(
-        ...selectedModules.map((module) => toProvisioningDefaultsSource(module))
+        ...selectedModules.map((module) =>
+          toProvisioningDefaultsSource(module),
+        ),
       );
     }
     if (templateDefaults) {
       sources.push(
         ...templateDefaults.modules.map((module) =>
-          toProvisioningDefaultsSource(module)
-        )
+          toProvisioningDefaultsSource(module),
+        ),
       );
     }
     const merged = mergeProvisioningDefaults(sources);
@@ -226,7 +300,7 @@ export default function S3() {
     setProvisioningState((prev) => ({
       ...prev,
       tags: prev.tags.map((tag) =>
-        tag.tagKey === tagKey ? { ...tag, tagValue: value } : tag
+        tag.tagKey === tagKey ? { ...tag, tagValue: value } : tag,
       ),
     }));
   };
@@ -242,7 +316,7 @@ export default function S3() {
 
   const handleCreate = () => {
     const missingMandatoryTags = provisioningState.tags.filter(
-      (tag) => tag.isMandatory && !tag.tagValue?.trim()
+      (tag) => tag.isMandatory && !tag.tagValue?.trim(),
     ).length;
     if (missingMandatoryTags > 0) {
       toast.error("필수 태그 값을 입력해주세요.");
@@ -268,7 +342,7 @@ export default function S3() {
   };
 
   const selectedTemplate = templateOptions.find(
-    (template) => template.id === Number(selectedTemplateId)
+    (template) => template.id === Number(selectedTemplateId),
   );
   const selectedModules = selectedModuleIds
     .map((moduleId) => moduleOptions.find((module) => module.id === moduleId))
@@ -278,7 +352,7 @@ export default function S3() {
       return moduleOptions;
     }
     const templateModuleIds = new Set(
-      templateDefaults.modules.map((module) => module.moduleId)
+      templateDefaults.modules.map((module) => module.moduleId),
     );
     return moduleOptions.filter((module) => !templateModuleIds.has(module.id));
   }, [moduleOptions, templateDefaults]);
@@ -288,8 +362,8 @@ export default function S3() {
       ? `${selectedTemplate.name} + ${selectedModuleNames.join(", ")}`
       : selectedTemplate.name
     : selectedModuleNames.length > 0
-    ? selectedModuleNames.join(", ")
-    : undefined;
+      ? selectedModuleNames.join(", ")
+      : undefined;
 
   const handleUpload = () => {
     toast.success("파일 업로드가 시작되었습니다.");

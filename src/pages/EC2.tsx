@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -46,6 +46,7 @@ import {
   CalendarIcon,
   Clock,
   Terminal,
+  RefreshCw,
 } from "lucide-react";
 import { SSMTerminal } from "@/components/terminal/SSMTerminal";
 import { toast } from "sonner";
@@ -99,20 +100,22 @@ const statusLabels: Record<string, string> = {
 };
 
 const instanceTypeLabels: Record<string, string> = {
-  "t3.micro": "티3 마이크로",
-  "t3.small": "티3 스몰",
-  "t3.medium": "티3 미디엄",
-  "t3.large": "티3 라지",
-  "c5.xlarge": "씨5 엑스라지",
+  "t3.micro": "t3.micro",
+  "t3.small": "t3.small",
+  "t3.medium": "t3.medium",
+  "t3.large": "t3.large",
+  "c5.xlarge": "c5.xlarge",
 };
 
-const formatInstanceType = (type: string) =>
-  instanceTypeLabels[type] ?? "알 수 없는 유형";
+const formatInstanceType = (type: string) => instanceTypeLabels[type] ?? type;
 
 export default function EC2() {
   const [instances, setInstances] = useState<EC2Instance[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const { accounts } = useAWSContext();
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const { accounts, selectedAccount } = useAWSContext();
 
   const getAuthHeaders = () => {
     const token = localStorage.getItem("access_token");
@@ -122,9 +125,19 @@ export default function EC2() {
     };
   };
 
-  useEffect(() => {
-    const fetchInstances = async () => {
-      // 데모 관리자 로그인 여부 확인
+  const normalizeEc2Status = (state?: string): EC2Instance["status"] | null => {
+    const normalized = state?.toLowerCase() ?? "";
+    if (normalized === "running") return "running";
+    if (normalized === "pending") return "pending";
+    if (normalized === "stopped" || normalized === "stopping") return "stopped";
+    if (normalized === "terminated" || normalized === "shutting-down") {
+      return null;
+    }
+    return null;
+  };
+
+  const fetchInstances = useCallback(
+    async (showToast = false, forceRefresh = false) => {
       const isDemoAdmin =
         localStorage.getItem("cloudforge_auth_token") ===
         "mock-token-admin-demo";
@@ -132,181 +145,239 @@ export default function EC2() {
         localStorage.getItem("cloudforge_auth_token") === "mock-token-admin";
 
       if (isDemoAdmin) {
-        // 데모 관리자용 더미 가상 서버 인스턴스 로드
         const dummyInstances: EC2Instance[] = [
           {
             id: "i-1234567890abcdef0",
-            name: "데모-웹-서버-01",
+            name: "demo-web-server-01",
             type: "t3.medium",
             status: "running",
             publicIp: "54.180.1.100",
             privateIp: "10.0.1.100",
             az: "ap-northeast-2a",
-            accountName: "데모 운영 계정",
+            accountName: "Demo Production Account",
             region: "ap-northeast-2",
           },
           {
             id: "i-0987654321fedcba0",
-            name: "데모-앱-서버-01",
+            name: "demo-app-server-01",
             type: "t3.large",
             status: "running",
             publicIp: "54.180.1.101",
             privateIp: "10.0.1.101",
             az: "ap-northeast-2b",
-            accountName: "데모 운영 계정",
+            accountName: "Demo Production Account",
             region: "ap-northeast-2",
           },
           {
             id: "i-abcdef1234567890",
-            name: "데모-개발-서버-01",
+            name: "demo-dev-server-01",
             type: "t3.micro",
             status: "stopped",
             publicIp: "-",
             privateIp: "10.0.2.50",
             az: "ap-northeast-2a",
-            accountName: "데모 개발 계정",
+            accountName: "Demo Development Account",
             region: "ap-northeast-2",
           },
           {
             id: "i-fedcba0987654321",
-            name: "데모-개발-서버-02",
+            name: "demo-dev-server-02",
             type: "t3.small",
             status: "running",
             publicIp: "54.180.1.102",
             privateIp: "10.0.2.51",
             az: "ap-northeast-2c",
-            accountName: "데모 개발 계정",
+            accountName: "Demo Development Account",
             region: "ap-northeast-2",
           },
           {
             id: "i-1234567890abcde0",
-            name: "데모-스테이징-서버",
+            name: "demo-staging-server",
             type: "t3.medium",
             status: "pending",
             publicIp: "-",
             privateIp: "10.0.3.100",
             az: "ap-northeast-2a",
-            accountName: "데모 스테이징 계정",
+            accountName: "Demo Staging Account",
             region: "ap-northeast-2",
           },
           {
             id: "i-0987654321abcde0",
-            name: "데모-배치-서버-01",
+            name: "demo-batch-server-01",
             type: "c5.xlarge",
             status: "running",
             publicIp: "54.180.1.103",
             privateIp: "10.0.1.200",
             az: "ap-northeast-2b",
-            accountName: "데모 운영 계정",
+            accountName: "Demo Production Account",
             region: "ap-northeast-2",
           },
           {
             id: "i-abcdef1234fedcba0",
-            name: "데모-테스트-서버-01",
+            name: "demo-test-server-01",
             type: "t3.micro",
             status: "stopped",
             publicIp: "-",
             privateIp: "10.0.2.52",
             az: "ap-northeast-2a",
-            accountName: "데모 개발 계정",
+            accountName: "Demo Development Account",
             region: "ap-northeast-2",
           },
           {
             id: "i-5678901234abcdefg",
-            name: "데모-데이터베이스-서버-01",
+            name: "demo-db-server-01",
             type: "t3.large",
             status: "running",
             publicIp: "54.180.1.104",
             privateIp: "10.0.1.150",
             az: "ap-northeast-2c",
-            accountName: "데모 운영 계정",
+            accountName: "Demo Production Account",
             region: "ap-northeast-2",
           },
         ];
-
-        setInstances(dummyInstances);
+        const filtered = selectedAccount
+          ? dummyInstances.filter((i) => i.accountName === selectedAccount.name)
+          : dummyInstances;
+        setInstances(filtered);
         setIsLoading(false);
+        setIsRefreshing(false);
+        if (showToast) toast.success("EC2 instances refreshed");
         return;
       }
 
       if (isMockAdmin) {
-        // 모의 관리자용 더미 가상 서버 인스턴스 로드
         const dummyInstances: EC2Instance[] = [
           {
             id: "i-1111111111111111",
-            name: "운영-웹-서버-01",
+            name: "prod-web-server-01",
             type: "t3.medium",
             status: "running",
             publicIp: "54.180.1.10",
             privateIp: "10.0.1.10",
             az: "ap-northeast-2a",
-            accountName: "운영 계정",
+            accountName: "Production Account",
             region: "ap-northeast-2",
           },
           {
             id: "i-2222222222222222",
-            name: "운영-앱-서버-01",
+            name: "prod-app-server-01",
             type: "t3.large",
             status: "running",
             publicIp: "54.180.1.11",
             privateIp: "10.0.1.11",
             az: "ap-northeast-2b",
-            accountName: "운영 계정",
+            accountName: "Production Account",
             region: "ap-northeast-2",
           },
         ];
-
-        setInstances(dummyInstances);
+        const filtered = selectedAccount
+          ? dummyInstances.filter((i) => i.accountName === selectedAccount.name)
+          : dummyInstances;
+        setInstances(filtered);
         setIsLoading(false);
+        setIsRefreshing(false);
+        if (showToast) toast.success("EC2 instances refreshed");
         return;
       }
 
-      // 실제 사용자 계정 연결 여부 확인
       if (accounts.length === 0) {
         setIsLoading(false);
+        setIsRefreshing(false);
         return;
       }
 
       try {
-        const response = await fetch(
-          buildApiUrl(API_CONFIG.ENDPOINTS.AWS_RESOURCES.EC2),
-          { headers: getAuthHeaders() }
-        );
+        const endpoint = forceRefresh
+          ? API_CONFIG.ENDPOINTS.AWS_RESOURCES.EC2_REFRESH
+          : API_CONFIG.ENDPOINTS.AWS_RESOURCES.EC2;
+        const response = await fetch(buildApiUrl(endpoint), {
+          method: forceRefresh ? "POST" : "GET",
+          headers: getAuthHeaders(),
+        });
         if (response.ok) {
           const data = await response.json();
-          const list = (data.results || []).map(
-            (inst: {
-              instanceId: string;
-              name?: string;
-              instanceType: string;
-              state: string;
-              publicIpAddress?: string;
-              privateIpAddress?: string;
-              availabilityZone: string;
-              accountName: string;
-              region: string;
-            }) => ({
-              id: inst.instanceId,
-              name: inst.name || inst.instanceId,
-              type: inst.instanceType,
-              status: inst.state.toLowerCase(),
-              publicIp: inst.publicIpAddress || "-",
-              privateIp: inst.privateIpAddress || "-",
-              az: inst.availabilityZone,
-              accountName: inst.accountName,
-              region: inst.region,
-            })
-          );
-          setInstances(list);
+          const list = (data.results || [])
+            .map(
+              (inst: {
+                instanceId: string;
+                name?: string;
+                instanceType: string;
+                state: string;
+                publicIpAddress?: string;
+                privateIpAddress?: string;
+                availabilityZone: string;
+                accountName: string;
+                region: string;
+              }) => {
+                const status = normalizeEc2Status(inst.state);
+                if (!status) return null;
+                return {
+                  id: inst.instanceId,
+                  name: inst.name || inst.instanceId,
+                  type: inst.instanceType,
+                  status,
+                  publicIp: inst.publicIpAddress || "-",
+                  privateIp: inst.privateIpAddress || "-",
+                  az: inst.availabilityZone,
+                  accountName: inst.accountName,
+                  region: inst.region,
+                };
+              },
+            )
+            .filter((item): item is EC2Instance => item !== null);
+
+          // Filter by selected account if set
+          const filtered = selectedAccount
+            ? list.filter(
+                (i: EC2Instance) => i.accountName === selectedAccount.name,
+              )
+            : list;
+
+          setInstances(filtered);
+          if (showToast) toast.success("EC2 instances refreshed");
         }
       } catch (error) {
-        console.error("가상 서버 인스턴스를 불러오지 못했습니다:", error);
+        console.error("Failed to fetch EC2 instances:", error);
+        if (showToast) toast.error("Failed to refresh EC2 instances");
       } finally {
         setIsLoading(false);
+        setIsRefreshing(false);
       }
-    };
+    },
+    [accounts, selectedAccount],
+  );
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await fetchInstances(true, true);
+  };
+
+  useEffect(() => {
     fetchInstances();
-  }, [accounts]);
+  }, [fetchInstances]);
+
+  // Filtered instances based on search and filters
+  const filteredInstances = useMemo(() => {
+    return instances.filter((inst) => {
+      const matchesSearch =
+        searchQuery === "" ||
+        inst.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        inst.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        inst.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        inst.publicIp.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        inst.privateIp.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesStatus =
+        statusFilter === "all" || inst.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [instances, searchQuery, statusFilter]);
+
+  // Get unique account names for filter
+  const uniqueAccounts = useMemo(() => {
+    return [
+      ...new Set(instances.map((inst) => inst.accountName).filter(Boolean)),
+    ];
+  }, [instances]);
   const [createOpen, setCreateOpen] = useState(false);
   const [instanceName, setInstanceName] = useState("");
   const [instanceType, setInstanceType] = useState("");
@@ -314,7 +385,7 @@ export default function EC2() {
     InstanceTemplateResponse[]
   >([]);
   const [moduleOptions, setModuleOptions] = useState<ModuleDetailResponse[]>(
-    []
+    [],
   );
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [selectedModuleIds, setSelectedModuleIds] = useState<number[]>([]);
@@ -330,16 +401,16 @@ export default function EC2() {
   // 중지 예약 다이얼로그 상태
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
   const [selectedInstance, setSelectedInstance] = useState<EC2Instance | null>(
-    null
+    null,
   );
   const [scheduledDate, setScheduledDate] = useState<Date | undefined>(
-    undefined
+    undefined,
   );
   const [scheduledTime, setScheduledTime] = useState("18:00");
 
   // 터미널 확장 상태 - 열려있는 인스턴스 추적
   const [expandedTerminalId, setExpandedTerminalId] = useState<string | null>(
-    null
+    null,
   );
 
   useEffect(() => {
@@ -353,8 +424,8 @@ export default function EC2() {
         setTemplateOptions(
           templates.filter(
             (template) =>
-              template.isActive && template.templateType === "INSTANCE"
-          )
+              template.isActive && template.templateType === "INSTANCE",
+          ),
         );
       } catch (error) {
         console.error("프로비저닝 기본값을 불러오지 못했습니다:", error);
@@ -395,10 +466,10 @@ export default function EC2() {
       return;
     }
     const templateModuleIds = new Set(
-      templateDefaults.modules.map((module) => module.moduleId)
+      templateDefaults.modules.map((module) => module.moduleId),
     );
     setSelectedModuleIds((prev) =>
-      prev.filter((moduleId) => !templateModuleIds.has(moduleId))
+      prev.filter((moduleId) => !templateModuleIds.has(moduleId)),
     );
   }, [templateDefaults]);
 
@@ -409,14 +480,16 @@ export default function EC2() {
     const sources = [] as ReturnType<typeof toProvisioningDefaultsSource>[];
     if (selectedModules.length > 0) {
       sources.push(
-        ...selectedModules.map((module) => toProvisioningDefaultsSource(module))
+        ...selectedModules.map((module) =>
+          toProvisioningDefaultsSource(module),
+        ),
       );
     }
     if (templateDefaults) {
       sources.push(
         ...templateDefaults.modules.map((module) =>
-          toProvisioningDefaultsSource(module)
-        )
+          toProvisioningDefaultsSource(module),
+        ),
       );
     }
     const merged = mergeProvisioningDefaults(sources);
@@ -434,7 +507,7 @@ export default function EC2() {
     setProvisioningState((prev) => ({
       ...prev,
       tags: prev.tags.map((tag) =>
-        tag.tagKey === tagKey ? { ...tag, tagValue: value } : tag
+        tag.tagKey === tagKey ? { ...tag, tagValue: value } : tag,
       ),
     }));
   };
@@ -463,7 +536,7 @@ export default function EC2() {
 
   const handleCreate = () => {
     const missingMandatoryTags = provisioningState.tags.filter(
-      (tag) => tag.isMandatory && !tag.tagValue?.trim()
+      (tag) => tag.isMandatory && !tag.tagValue?.trim(),
     ).length;
     if (missingMandatoryTags > 0) {
       toast.error("필수 태그 값을 입력해주세요.");
@@ -477,7 +550,7 @@ export default function EC2() {
       toast.error("필수 항목을 입력해주세요.");
       return;
     }
-    toast.success("가상 서버 인스턴스 생성이 시작되었습니다.");
+    toast.success("EC2 인스턴스 생성이 시작되었습니다.");
     setCreateOpen(false);
     setInstanceName("");
     setInstanceType("");
@@ -505,12 +578,12 @@ export default function EC2() {
       prev.map((inst) =>
         inst.id === selectedInstance.id
           ? { ...inst, scheduledStopDate: scheduledDate }
-          : inst
-      )
+          : inst,
+      ),
     );
 
     toast.success(
-      `${selectedInstance.name} 인스턴스의 Stop 예정일이 설정되었습니다.`
+      `${selectedInstance.name} 인스턴스의 Stop 예정일이 설정되었습니다.`,
     );
     setScheduleDialogOpen(false);
     setSelectedInstance(null);
@@ -524,12 +597,12 @@ export default function EC2() {
       prev.map((inst) =>
         inst.id === selectedInstance.id
           ? { ...inst, scheduledStopDate: undefined }
-          : inst
-      )
+          : inst,
+      ),
     );
 
     toast.success(
-      `${selectedInstance.name} 인스턴스의 Stop 예정이 취소되었습니다.`
+      `${selectedInstance.name} 인스턴스의 Stop 예정이 취소되었습니다.`,
     );
     setScheduleDialogOpen(false);
     setSelectedInstance(null);
@@ -537,7 +610,7 @@ export default function EC2() {
   };
 
   const selectedTemplate = templateOptions.find(
-    (template) => template.id === Number(selectedTemplateId)
+    (template) => template.id === Number(selectedTemplateId),
   );
   const selectedModules = selectedModuleIds
     .map((moduleId) => moduleOptions.find((module) => module.id === moduleId))
@@ -547,7 +620,7 @@ export default function EC2() {
       return moduleOptions;
     }
     const templateModuleIds = new Set(
-      templateDefaults.modules.map((module) => module.moduleId)
+      templateDefaults.modules.map((module) => module.moduleId),
     );
     return moduleOptions.filter((module) => !templateModuleIds.has(module.id));
   }, [moduleOptions, templateDefaults]);
@@ -557,8 +630,8 @@ export default function EC2() {
       ? `${selectedTemplate.name} + ${selectedModuleNames.join(", ")}`
       : selectedTemplate.name
     : selectedModuleNames.length > 0
-    ? selectedModuleNames.join(", ")
-    : undefined;
+      ? selectedModuleNames.join(", ")
+      : undefined;
 
   if (isLoading) {
     return (
@@ -577,11 +650,9 @@ export default function EC2() {
     return (
       <div className="space-y-6 animate-fade-in">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">
-            가상 서버 인스턴스
-          </h1>
+          <h1 className="text-3xl font-bold text-foreground">EC2 인스턴스</h1>
           <p className="text-muted-foreground mt-1">
-            가상 서버 인스턴스를 관리합니다
+            EC2 인스턴스를 관리합니다
           </p>
         </div>
         <div className="rounded-xl border border-border bg-card p-12 text-center">
@@ -601,11 +672,9 @@ export default function EC2() {
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">
-            가상 서버 인스턴스
-          </h1>
+          <h1 className="text-3xl font-bold text-foreground">EC2 인스턴스</h1>
           <p className="text-muted-foreground mt-1">
-            가상 서버 인스턴스를 관리합니다
+            EC2 인스턴스를 관리합니다
           </p>
         </div>
 
@@ -619,10 +688,10 @@ export default function EC2() {
           <DialogContent className="sm:max-w-[600px] bg-card border-border">
             <DialogHeader>
               <DialogTitle className="text-foreground">
-                새 가상 서버 인스턴스 생성
+                새 EC2 인스턴스 생성
               </DialogTitle>
               <DialogDescription className="text-muted-foreground">
-                새로운 가상 서버 인스턴스를 생성합니다.
+                새로운 EC2 인스턴스를 생성합니다.
               </DialogDescription>
             </DialogHeader>
 
@@ -804,12 +873,14 @@ export default function EC2() {
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="인스턴스 검색..."
+            placeholder="인스턴스 검색 (이름, ID, 타입, IP)..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10 bg-secondary border-border"
           />
         </div>
-        <Select defaultValue="all">
-          <SelectTrigger className="w-40 bg-secondary border-border">
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-32 bg-secondary border-border">
             <SelectValue placeholder="상태 필터" />
           </SelectTrigger>
           <SelectContent className="bg-popover border-border">
@@ -818,6 +889,16 @@ export default function EC2() {
             <SelectItem value="stopped">중지됨</SelectItem>
           </SelectContent>
         </Select>
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={handleRefresh}
+          disabled={isRefreshing}
+        >
+          <RefreshCw
+            className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`}
+          />
+        </Button>
       </div>
 
       <div className="rounded-xl border border-border bg-card overflow-hidden">
@@ -828,16 +909,19 @@ export default function EC2() {
                 인스턴스
               </th>
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                유형
+                타입
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                계정
               </th>
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 상태
               </th>
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                공인 주소
+                Public IP
               </th>
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                사설 주소
+                Private IP
               </th>
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 가용영역
@@ -848,7 +932,7 @@ export default function EC2() {
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {instances.map((instance) => (
+            {filteredInstances.map((instance) => (
               <>
                 <tr
                   key={instance.id}
@@ -873,8 +957,13 @@ export default function EC2() {
                   </td>
                   <td className="px-4 py-4">
                     <Badge variant="outline" className="font-mono text-xs">
-                      {formatInstanceType(instance.type)}
+                      {instance.type}
                     </Badge>
+                  </td>
+                  <td className="px-4 py-4">
+                    <span className="text-sm text-muted-foreground">
+                      {instance.accountName || "-"}
+                    </span>
                   </td>
                   <td className="px-4 py-4">
                     <Badge className={statusStyles[instance.status]}>

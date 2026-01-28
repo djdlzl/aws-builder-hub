@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -34,6 +34,7 @@ import {
   RefreshCcw,
   Loader2,
   AlertCircle,
+  RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ModulePreview } from "@/components/modules/ModulePreview";
@@ -62,12 +63,13 @@ interface RDSInstance {
   engine: string;
   engineVersion: string;
   instanceClass: string;
-  status: string;
+  status: "available" | "stopped" | "starting" | "stopping" | "creating";
   endpoint: string;
   az: string;
   storage: string;
   accountName?: string;
   region?: string;
+  role?: string; // primary, replica, etc.
 }
 
 const statusStyles = {
@@ -87,33 +89,35 @@ const statusLabels: Record<string, string> = {
 };
 
 const engineLabels: Record<string, string> = {
-  mysql: "마이에스큐엘",
-  postgres: "포스트그레에스큐엘",
-  postgresql: "포스트그레에스큐엘",
-  mariadb: "마리아디비",
-  "aurora-mysql": "오로라 마이에스큐엘",
-  "aurora-postgres": "오로라 포스트그레에스큐엘",
-  "aurora-postgresql": "오로라 포스트그레에스큐엘",
+  mysql: "MySQL",
+  postgres: "PostgreSQL",
+  postgresql: "PostgreSQL",
+  mariadb: "MariaDB",
+  "aurora-mysql": "Aurora MySQL",
+  "aurora-postgres": "Aurora PostgreSQL",
+  "aurora-postgresql": "Aurora PostgreSQL",
 };
 
-const instanceClassLabels: Record<string, string> = {
-  "db.t3.micro": "티3 마이크로",
-  "db.t3.small": "티3 스몰",
-  "db.t3.medium": "티3 미디엄",
-  "db.r5.large": "알5 라지",
-  "db.r5.xlarge": "알5 엑스라지",
+const instanceTypeLabels: Record<string, string> = {
+  "db.t3.micro": "db.t3.micro",
+  "db.t3.small": "db.t3.small",
+  "db.t3.medium": "db.t3.medium",
+  "db.r5.large": "db.r5.large",
+  "db.r5.xlarge": "db.r5.xlarge",
 };
 
-const formatEngine = (engine: string) =>
-  engineLabels[engine] ?? "알 수 없는 엔진";
+const formatEngine = (engine: string) => engineLabels[engine] ?? engine;
 
-const formatInstanceClass = (instanceClass: string) =>
-  instanceClassLabels[instanceClass] ?? "알 수 없는 클래스";
+const formatInstanceType = (instanceType: string) =>
+  instanceTypeLabels[instanceType] ?? instanceType;
 
 export default function RDS() {
   const [instances, setInstances] = useState<RDSInstance[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const { accounts } = useAWSContext();
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const { accounts, selectedAccount } = useAWSContext();
   const [createOpen, setCreateOpen] = useState(false);
   const [instanceName, setInstanceName] = useState("");
   const [engine, setEngine] = useState("");
@@ -122,7 +126,7 @@ export default function RDS() {
     InstanceTemplateResponse[]
   >([]);
   const [moduleOptions, setModuleOptions] = useState<ModuleDetailResponse[]>(
-    []
+    [],
   );
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [selectedModuleIds, setSelectedModuleIds] = useState<number[]>([]);
@@ -143,59 +147,243 @@ export default function RDS() {
     };
   };
 
-  useEffect(() => {
-    const fetchInstances = async () => {
-      if (accounts.length === 0) {
+  const normalizeRdsStatus = (
+    status?: string,
+  ): RDSInstance["status"] | null => {
+    const normalized = status?.toLowerCase() ?? "";
+    if (!normalized) return null;
+    if (normalized === "available") return "available";
+    if (normalized === "stopped") return "stopped";
+    if (normalized === "stopping") return "stopping";
+    if (normalized === "starting") return "starting";
+    if (normalized === "creating") return "creating";
+    if (normalized === "deleted" || normalized === "deleting") return null;
+    if (
+      normalized.includes("modifying") ||
+      normalized.includes("backing") ||
+      normalized.includes("rebooting") ||
+      normalized.includes("maintenance") ||
+      normalized.includes("upgrading") ||
+      normalized.includes("configuring") ||
+      normalized.includes("storage")
+    ) {
+      return "starting";
+    }
+    return null;
+  };
+
+  const fetchInstances = useCallback(
+    async (showToast = false, forceRefresh = false) => {
+      const isDemoAdmin =
+        localStorage.getItem("cloudforge_auth_token") ===
+        "mock-token-admin-demo";
+      const isMockAdmin =
+        localStorage.getItem("cloudforge_auth_token") === "mock-token-admin";
+
+      if (isDemoAdmin) {
+        const dummyInstances: RDSInstance[] = [
+          {
+            id: "demo-prod-mysql",
+            name: "demo-prod-mysql",
+            engine: "mysql",
+            engineVersion: "8.0.35",
+            instanceClass: "db.r5.large",
+            status: "available",
+            endpoint: "demo-prod-mysql.xxx.rds.amazonaws.com:3306",
+            az: "ap-northeast-2a",
+            storage: "100 GB",
+            accountName: "Demo Production Account",
+            region: "ap-northeast-2",
+            role: "Primary",
+          },
+          {
+            id: "demo-prod-mysql-replica",
+            name: "demo-prod-mysql-replica",
+            engine: "mysql",
+            engineVersion: "8.0.35",
+            instanceClass: "db.r5.large",
+            status: "available",
+            endpoint: "demo-prod-mysql-replica.xxx.rds.amazonaws.com:3306",
+            az: "ap-northeast-2b",
+            storage: "100 GB",
+            accountName: "Demo Production Account",
+            region: "ap-northeast-2",
+            role: "Replica",
+          },
+          {
+            id: "demo-dev-postgres",
+            name: "demo-dev-postgres",
+            engine: "postgres",
+            engineVersion: "15.4",
+            instanceClass: "db.t3.medium",
+            status: "available",
+            endpoint: "demo-dev-postgres.xxx.rds.amazonaws.com:5432",
+            az: "ap-northeast-2a",
+            storage: "50 GB",
+            accountName: "Demo Development Account",
+            region: "ap-northeast-2",
+            role: "Primary",
+          },
+          {
+            id: "demo-staging-mysql",
+            name: "demo-staging-mysql",
+            engine: "mysql",
+            engineVersion: "8.0.35",
+            instanceClass: "db.t3.small",
+            status: "stopped",
+            endpoint: "-",
+            az: "ap-northeast-2a",
+            storage: "20 GB",
+            accountName: "Demo Staging Account",
+            region: "ap-northeast-2",
+            role: "Primary",
+          },
+        ];
+        const filtered = selectedAccount
+          ? dummyInstances.filter((i) => i.accountName === selectedAccount.name)
+          : dummyInstances;
+        setInstances(filtered);
         setIsLoading(false);
+        setIsRefreshing(false);
+        if (showToast) toast.success("RDS instances refreshed");
         return;
       }
+
+      if (isMockAdmin) {
+        const dummyInstances: RDSInstance[] = [
+          {
+            id: "prod-mysql-master",
+            name: "prod-mysql-master",
+            engine: "mysql",
+            engineVersion: "8.0.35",
+            instanceClass: "db.r5.large",
+            status: "available",
+            endpoint: "prod-mysql.xxx.rds.amazonaws.com:3306",
+            az: "ap-northeast-2a",
+            storage: "200 GB",
+            accountName: "Production Account",
+            region: "ap-northeast-2",
+            role: "Primary",
+          },
+          {
+            id: "prod-postgres",
+            name: "prod-postgres",
+            engine: "postgres",
+            engineVersion: "15.4",
+            instanceClass: "db.r5.xlarge",
+            status: "available",
+            endpoint: "prod-postgres.xxx.rds.amazonaws.com:5432",
+            az: "ap-northeast-2b",
+            storage: "500 GB",
+            accountName: "Production Account",
+            region: "ap-northeast-2",
+            role: "Primary",
+          },
+        ];
+        const filtered = selectedAccount
+          ? dummyInstances.filter((i) => i.accountName === selectedAccount.name)
+          : dummyInstances;
+        setInstances(filtered);
+        setIsLoading(false);
+        setIsRefreshing(false);
+        if (showToast) toast.success("RDS instances refreshed");
+        return;
+      }
+
+      if (accounts.length === 0) {
+        setIsLoading(false);
+        setIsRefreshing(false);
+        return;
+      }
+
       try {
-        const response = await fetch(
-          buildApiUrl(API_CONFIG.ENDPOINTS.AWS_RESOURCES.RDS),
-          { headers: getAuthHeaders() }
-        );
+        const endpoint = forceRefresh
+          ? API_CONFIG.ENDPOINTS.AWS_RESOURCES.RDS_REFRESH
+          : API_CONFIG.ENDPOINTS.AWS_RESOURCES.RDS;
+        const response = await fetch(buildApiUrl(endpoint), {
+          method: forceRefresh ? "POST" : "GET",
+          headers: getAuthHeaders(),
+        });
         if (response.ok) {
           const data = await response.json();
-          const list = (data.results || []).map(
-            (inst: {
-              dbInstanceIdentifier: string;
-              dbInstanceClass: string;
-              engine: string;
-              engineVersion: string;
-              status: string;
-              endpoint?: string;
-              port?: number;
-              availabilityZone?: string;
-              allocatedStorage: number;
-              accountName: string;
-              region: string;
-            }) => ({
-              id: inst.dbInstanceIdentifier,
-              name: inst.dbInstanceIdentifier,
-              engine: inst.engine,
-              engineVersion: inst.engineVersion,
-              instanceClass: inst.dbInstanceClass,
-              status: inst.status,
-              endpoint: inst.endpoint ? `${inst.endpoint}:${inst.port}` : "-",
-              az: inst.availabilityZone || "-",
-              storage: `${inst.allocatedStorage}기가바이트`,
-              accountName: inst.accountName,
-              region: inst.region,
-            })
-          );
-          setInstances(list);
+          const list = (data.results || [])
+            .map(
+              (inst: {
+                dbInstanceIdentifier: string;
+                dbInstanceClass: string;
+                engine: string;
+                engineVersion: string;
+                status: string;
+                endpoint?: string;
+                port?: number;
+                availabilityZone?: string;
+                allocatedStorage: number;
+                accountName: string;
+                region: string;
+                role?: string;
+              }) => {
+                const normalizedStatus = normalizeRdsStatus(inst.status);
+                if (!normalizedStatus) return null;
+                return {
+                  id: inst.dbInstanceIdentifier,
+                  name: inst.dbInstanceIdentifier,
+                  engine: inst.engine,
+                  engineVersion: inst.engineVersion,
+                  instanceClass: inst.dbInstanceClass,
+                  status: normalizedStatus,
+                  endpoint: inst.endpoint
+                    ? `${inst.endpoint}:${inst.port}`
+                    : "-",
+                  az: inst.availabilityZone || "-",
+                  storage: `${inst.allocatedStorage} GB`,
+                  accountName: inst.accountName,
+                  region: inst.region,
+                  role: inst.role || "Primary",
+                };
+              },
+            )
+            .filter((item): item is RDSInstance => item !== null);
+          const filtered = selectedAccount
+            ? list.filter((i) => i.accountName === selectedAccount.name)
+            : list;
+
+          setInstances(filtered);
+          if (showToast) toast.success("RDS instances refreshed");
         }
       } catch (error) {
-        console.error(
-          "관계형 데이터베이스 인스턴스를 불러오지 못했습니다:",
-          error
-        );
+        console.error("Failed to fetch RDS instances:", error);
+        if (showToast) toast.error("Failed to refresh RDS instances");
       } finally {
         setIsLoading(false);
+        setIsRefreshing(false);
       }
-    };
+    },
+    [accounts, selectedAccount],
+  );
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await fetchInstances(true, true);
+  };
+
+  useEffect(() => {
     fetchInstances();
-  }, [accounts]);
+  }, [fetchInstances]);
+
+  // Filtered instances
+  const filteredInstances = useMemo(() => {
+    return instances.filter((inst) => {
+      const matchesSearch =
+        searchQuery === "" ||
+        inst.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        inst.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        inst.engine.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        inst.instanceClass.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesStatus =
+        statusFilter === "all" || inst.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [instances, searchQuery, statusFilter]);
 
   useEffect(() => {
     const loadOptions = async () => {
@@ -208,8 +396,8 @@ export default function RDS() {
         setTemplateOptions(
           templates.filter(
             (template) =>
-              template.isActive && template.templateType === "INSTANCE"
-          )
+              template.isActive && template.templateType === "INSTANCE",
+          ),
         );
       } catch (error) {
         console.error("프로비저닝 기본값을 불러오지 못했습니다:", error);
@@ -249,10 +437,10 @@ export default function RDS() {
       return;
     }
     const templateModuleIds = new Set(
-      templateDefaults.modules.map((module) => module.moduleId)
+      templateDefaults.modules.map((module) => module.moduleId),
     );
     setSelectedModuleIds((prev) =>
-      prev.filter((moduleId) => !templateModuleIds.has(moduleId))
+      prev.filter((moduleId) => !templateModuleIds.has(moduleId)),
     );
   }, [templateDefaults]);
 
@@ -263,14 +451,16 @@ export default function RDS() {
     const sources = [] as ReturnType<typeof toProvisioningDefaultsSource>[];
     if (selectedModules.length > 0) {
       sources.push(
-        ...selectedModules.map((module) => toProvisioningDefaultsSource(module))
+        ...selectedModules.map((module) =>
+          toProvisioningDefaultsSource(module),
+        ),
       );
     }
     if (templateDefaults) {
       sources.push(
         ...templateDefaults.modules.map((module) =>
-          toProvisioningDefaultsSource(module)
-        )
+          toProvisioningDefaultsSource(module),
+        ),
       );
     }
     const merged = mergeProvisioningDefaults(sources);
@@ -288,7 +478,7 @@ export default function RDS() {
     setProvisioningState((prev) => ({
       ...prev,
       tags: prev.tags.map((tag) =>
-        tag.tagKey === tagKey ? { ...tag, tagValue: value } : tag
+        tag.tagKey === tagKey ? { ...tag, tagValue: value } : tag,
       ),
     }));
   };
@@ -304,7 +494,7 @@ export default function RDS() {
 
   const handleCreate = () => {
     const missingMandatoryTags = provisioningState.tags.filter(
-      (tag) => tag.isMandatory && !tag.tagValue?.trim()
+      (tag) => tag.isMandatory && !tag.tagValue?.trim(),
     ).length;
     if (missingMandatoryTags > 0) {
       toast.error("필수 태그 값을 입력해주세요.");
@@ -335,7 +525,7 @@ export default function RDS() {
   };
 
   const selectedTemplate = templateOptions.find(
-    (template) => template.id === Number(selectedTemplateId)
+    (template) => template.id === Number(selectedTemplateId),
   );
   const selectedModules = selectedModuleIds
     .map((moduleId) => moduleOptions.find((module) => module.id === moduleId))
@@ -345,7 +535,7 @@ export default function RDS() {
       return moduleOptions;
     }
     const templateModuleIds = new Set(
-      templateDefaults.modules.map((module) => module.moduleId)
+      templateDefaults.modules.map((module) => module.moduleId),
     );
     return moduleOptions.filter((module) => !templateModuleIds.has(module.id));
   }, [moduleOptions, templateDefaults]);
@@ -355,8 +545,8 @@ export default function RDS() {
       ? `${selectedTemplate.name} + ${selectedModuleNames.join(", ")}`
       : selectedTemplate.name
     : selectedModuleNames.length > 0
-    ? selectedModuleNames.join(", ")
-    : undefined;
+      ? selectedModuleNames.join(", ")
+      : undefined;
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -599,12 +789,14 @@ export default function RDS() {
             <div className="relative flex-1 max-w-sm">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="인스턴스 검색..."
+                placeholder="인스턴스 검색 (이름, 엔진, 타입)..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10 bg-secondary border-border"
               />
             </div>
-            <Select defaultValue="all">
-              <SelectTrigger className="w-40 bg-secondary border-border">
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-32 bg-secondary border-border">
                 <SelectValue placeholder="상태 필터" />
               </SelectTrigger>
               <SelectContent className="bg-popover border-border">
@@ -613,6 +805,16 @@ export default function RDS() {
                 <SelectItem value="stopped">중지됨</SelectItem>
               </SelectContent>
             </Select>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+            >
+              <RefreshCw
+                className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`}
+              />
+            </Button>
           </div>
 
           <div className="rounded-xl border border-border bg-card overflow-hidden">
@@ -626,7 +828,13 @@ export default function RDS() {
                     엔진
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    클래스
+                    타입
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    역할
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    계정
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     상태
@@ -643,7 +851,7 @@ export default function RDS() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {instances.map((instance) => (
+                {filteredInstances.map((instance) => (
                   <tr
                     key={instance.id}
                     className="hover:bg-accent/50 transition-colors"
@@ -666,7 +874,7 @@ export default function RDS() {
                     <td className="px-4 py-4">
                       <div>
                         <p className="text-sm text-foreground">
-                          {formatEngine(instance.engine)}
+                          {instance.engine}
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {instance.engineVersion}
@@ -675,8 +883,18 @@ export default function RDS() {
                     </td>
                     <td className="px-4 py-4">
                       <Badge variant="outline" className="font-mono text-xs">
-                        {formatInstanceClass(instance.instanceClass)}
+                        {instance.instanceClass}
                       </Badge>
+                    </td>
+                    <td className="px-4 py-4">
+                      <Badge variant="secondary" className="text-xs">
+                        {instance.role || "Primary"}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-4">
+                      <span className="text-sm text-muted-foreground">
+                        {instance.accountName || "-"}
+                      </span>
                     </td>
                     <td className="px-4 py-4">
                       <Badge className={statusStyles[instance.status]}>
