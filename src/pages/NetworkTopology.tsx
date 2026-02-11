@@ -95,6 +95,10 @@ function NetworkTopologyContent() {
         progress: syncProgress.progress,
       }
     : undefined;
+  const isSyncCompleted =
+    !!syncProgress && !syncProgress.isInProgress && syncProgress.progress >= 1;
+  const isSyncFailed =
+    !!syncProgress && !syncProgress.isInProgress && syncProgress.progress < 1;
 
   // 새로 고침 시작 시 알림
   const handleRefresh = useCallback(async () => {
@@ -195,6 +199,50 @@ function NetworkTopologyContent() {
     topologyData,
     cacheStatus?.lastUpdated,
     addNotification,
+  ]);
+
+  // 동기화 실패 시 알림
+  useEffect(() => {
+    if (!isSyncFailed) {
+      return;
+    }
+
+    const wasRefreshing = sessionStorage.getItem("networkTopologyRefreshing");
+    if (wasRefreshing === "true") {
+      const failureNotification = NotificationUtils.createErrorNotification(
+        "동기화 실패",
+        syncProgress?.message ||
+          "네트워크 데이터 동기화 중 오류가 발생했습니다.",
+      );
+
+      addNotification({
+        ...failureNotification,
+        actions: [
+          {
+            label: "다시 시도",
+            onClick: () => {
+              dismissNotification(failureNotification.id);
+              handleRefresh();
+            },
+            variant: "primary",
+          },
+          {
+            label: "닫기",
+            onClick: () => {
+              dismissNotification(failureNotification.id);
+            },
+            variant: "secondary",
+          },
+        ],
+      });
+      sessionStorage.removeItem("networkTopologyRefreshing");
+    }
+  }, [
+    isSyncFailed,
+    syncProgress?.message,
+    addNotification,
+    dismissNotification,
+    handleRefresh,
   ]);
 
   // 새로 고침 시작 시 상태 저장
@@ -373,10 +421,20 @@ function NetworkTopologyContent() {
                   <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
                   <Badge>진행 중</Badge>
                 </>
-              ) : (
+              ) : isSyncFailed ? (
+                <>
+                  <AlertCircle className="h-4 w-4 text-red-500" />
+                  <Badge variant="destructive">실패</Badge>
+                </>
+              ) : isSyncCompleted ? (
                 <>
                   <CheckCircle className="h-4 w-4 text-green-500" />
-                  <Badge variant="secondary">대기 중</Badge>
+                  <Badge variant="secondary">완료</Badge>
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="h-4 w-4 text-muted-foreground" />
+                  <Badge variant="outline">대기 중</Badge>
                 </>
               )}
             </div>
@@ -394,6 +452,15 @@ function NetworkTopologyContent() {
                   className="h-2"
                 />
               </div>
+            )}
+            {!syncProgress?.isInProgress && syncProgress && (
+              <p className="text-xs text-muted-foreground mt-2">
+                {isSyncFailed
+                  ? `동기화 실패: ${syncProgress.message}`
+                  : isSyncCompleted
+                    ? "동기화가 완료되었습니다."
+                    : "대기 중입니다."}
+              </p>
             )}
           </CardContent>
         </Card>

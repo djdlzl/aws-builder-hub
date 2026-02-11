@@ -35,9 +35,11 @@ export const API_CONFIG = {
     AWS_RESOURCES: {
       EC2: "/api/v1/resources/ec2",
       EC2_REFRESH: "/api/v1/resources/ec2/refresh",
+      EC2_REFRESH_STATUS: "/api/v1/resources/ec2/refresh/status",
       S3: "/api/v1/resources/s3",
       RDS: "/api/v1/resources/rds",
       RDS_REFRESH: "/api/v1/resources/rds/refresh",
+      RDS_REFRESH_STATUS: "/api/v1/resources/rds/refresh/status",
       VPC: "/api/v1/resources/vpc",
     },
     // Network Topology endpoints

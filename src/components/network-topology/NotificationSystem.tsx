@@ -275,10 +275,12 @@ interface SyncProgressNotificationProps {
 
 function SyncProgressNotification({ progress, onDismiss }: SyncProgressNotificationProps) {
     const [isBlinking, setIsBlinking] = useState(false);
+    const isFailed = !progress.isInProgress && progress.progress < 1;
+    const isCompleted = !progress.isInProgress && progress.progress >= 1;
 
     // 완료 시 깜빡임 효과
     useEffect(() => {
-        if (!progress.isInProgress && progress.progress >= 1) {
+        if (isCompleted) {
             setIsBlinking(true);
             const timer = setTimeout(() => {
                 setIsBlinking(false);
@@ -287,7 +289,7 @@ function SyncProgressNotification({ progress, onDismiss }: SyncProgressNotificat
             }, 2000);
             return () => clearTimeout(timer);
         }
-    }, [progress.isInProgress, progress.progress, onDismiss]);
+    }, [isCompleted, onDismiss]);
 
     const formatTimeRemaining = (seconds: number): string => {
         if (seconds < 60) {
@@ -304,12 +306,15 @@ function SyncProgressNotification({ progress, onDismiss }: SyncProgressNotificat
             className={`
                 bg-white border border-gray-200 rounded-lg shadow-lg p-4 max-w-sm
                 ${isBlinking ? 'animate-pulse bg-green-50 border-green-200' : ''}
+                ${isFailed ? 'border-red-200 bg-red-50' : ''}
             `}
         >
             <div className="flex items-start">
                 <div className="flex-shrink-0">
                     {progress.isInProgress ? (
                         <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
+                    ) : isFailed ? (
+                        <AlertCircle className="w-5 h-5 text-red-600" />
                     ) : (
                         <CheckCircle className="w-5 h-5 text-green-600" />
                     )}
@@ -317,7 +322,11 @@ function SyncProgressNotification({ progress, onDismiss }: SyncProgressNotificat
 
                 <div className="ml-3 flex-1">
                     <h4 className="text-sm font-medium text-gray-900">
-                        {progress.isInProgress ? '네트워크 데이터 동기화 중' : '동기화 완료'}
+                        {progress.isInProgress
+                            ? '네트워크 데이터 동기화 중'
+                            : isFailed
+                                ? '동기화 실패'
+                                : '동기화 완료'}
                     </h4>
 
                     <p className="mt-1 text-sm text-gray-600">
@@ -339,7 +348,7 @@ function SyncProgressNotification({ progress, onDismiss }: SyncProgressNotificat
                             <div
                                 className={`
                                     h-2 rounded-full transition-all duration-500
-                                    ${progress.isInProgress ? 'bg-blue-600' : 'bg-green-600'}
+                                    ${progress.isInProgress ? 'bg-blue-600' : isFailed ? 'bg-red-600' : 'bg-green-600'}
                                 `}
                                 style={{ width: `${progress.progress * 100}%` }}
                             />

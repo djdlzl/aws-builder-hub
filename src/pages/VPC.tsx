@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -37,9 +37,12 @@ const statusStyles: Record<string, string> = {
 export default function VPC() {
   const [vpcs, setVpcs] = useState<VPCData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const { accounts } = useAWSContext();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const { accounts, selectedAccount, selectedRegion } = useAWSContext();
 
   const getAuthHeaders = () => {
+
     const token = localStorage.getItem("access_token");
     return {
       "Content-Type": "application/json",
@@ -79,7 +82,16 @@ export default function VPC() {
               region: vpc.region,
             })
           );
-          setVpcs(list);
+
+          const filtered = selectedAccount
+            ? list.filter((v: VPCData) => v.accountName === selectedAccount.name)
+            : list;
+
+          const filteredByRegion = selectedRegion
+            ? filtered.filter((v: VPCData) => v.region === selectedRegion.code)
+            : filtered;
+
+          setVpcs(filteredByRegion);
         }
       } catch (error) {
         console.error("Failed to fetch VPCs:", error);
@@ -88,7 +100,23 @@ export default function VPC() {
       }
     };
     fetchVPCs();
-  }, [accounts]);
+  }, [accounts, selectedAccount, selectedRegion]);
+
+  const filteredVpcs = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return vpcs.filter((vpc) => {
+      const matchesSearch =
+        query === "" ||
+        vpc.name.toLowerCase().includes(query) ||
+        vpc.vpcId.toLowerCase().includes(query) ||
+        vpc.cidrBlock.toLowerCase().includes(query) ||
+        vpc.accountName.toLowerCase().includes(query) ||
+        vpc.region.toLowerCase().includes(query);
+      const matchesStatus =
+        statusFilter === "all" || vpc.state === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [vpcs, searchQuery, statusFilter]);
 
   if (isLoading) {
     return (
@@ -134,10 +162,12 @@ export default function VPC() {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="VPC 검색..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10 bg-secondary border-border"
           />
         </div>
-        <Select defaultValue="all">
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-40 bg-secondary border-border">
             <SelectValue placeholder="상태 필터" />
           </SelectTrigger>
@@ -148,7 +178,7 @@ export default function VPC() {
         </Select>
       </div>
 
-      {vpcs.length === 0 ? (
+      {filteredVpcs.length === 0 ? (
         <div className="rounded-xl border border-border bg-card p-12 text-center">
           <AlertCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
           <p className="text-muted-foreground">표시할 VPC가 없습니다.</p>
@@ -159,7 +189,7 @@ export default function VPC() {
             <thead>
               <tr className="border-b border-border bg-muted/30">
                 <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  VPC
+                  VPC ({filteredVpcs.length})
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   CIDR
@@ -179,7 +209,7 @@ export default function VPC() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {vpcs.map((vpc) => (
+              {filteredVpcs.map((vpc) => (
                 <tr
                   key={vpc.vpcId}
                   className="hover:bg-accent/50 transition-colors"

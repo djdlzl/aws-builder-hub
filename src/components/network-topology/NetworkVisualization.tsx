@@ -83,6 +83,7 @@ export function NetworkVisualization({
   const [isOptimizedMode, setIsOptimizedMode] = useState(false);
   const [performanceWarnings, setPerformanceWarnings] = useState<string[]>([]);
   const [renderingError, setRenderingError] = useState<string | null>(null);
+  const [hoveredNode, setHoveredNode] = useState<NodeData | null>(null);
 
   // 기본 설정 (성능 최적화 포함)
   const defaultSettings: VisualizationSettings = useMemo(() => {
@@ -221,7 +222,12 @@ export function NetworkVisualization({
 
       // 필터링된 데이터 준비
       const filteredNodes = filterNodes(data.nodes, filters);
-      const filteredEdges = filterEdges(data.edges, filteredNodes, filters);
+      const filteredEdges = filterEdges(
+        data.edges,
+        filteredNodes,
+        filters,
+        hoveredNode,
+      );
 
       // 대용량 데이터 처리
       let processedNodes = filteredNodes;
@@ -391,8 +397,8 @@ export function NetworkVisualization({
         })
         .attr("rx", 8)
         .attr("ry", 8)
-        .attr("fill", (d) => getNodeColor(d.type))
-        .attr("stroke", (d) => getNodeBorderColor(d.type))
+        .attr("fill", (d) => getNodeColor(d.type, d.metadata))
+        .attr("stroke", (d) => getNodeBorderColor(d.type, d.metadata))
         .attr("stroke-width", isOptimizedMode ? 1 : 2)
         .attr("stroke-dasharray", (d) =>
           d.type === NodeType.ACCOUNT ? "none" : "5,3",
@@ -421,8 +427,8 @@ export function NetworkVisualization({
         )
         .attr("rx", 4)
         .attr("ry", 4)
-        .attr("fill", (d) => getNodeColor(d.type))
-        .attr("stroke", (d) => getNodeBorderColor(d.type))
+        .attr("fill", (d) => getNodeColor(d.type, d.metadata))
+        .attr("stroke", (d) => getNodeBorderColor(d.type, d.metadata))
         .attr("stroke-width", 1.5);
 
       // 일반 노드 위치 설정
@@ -520,12 +526,14 @@ export function NetworkVisualization({
         })
         .on("mouseenter", (event, d) => {
           if (!isOptimizedMode) {
+            setHoveredNode(d as NodeData);
             onNodeHover?.(d as NodeData);
             highlightConnectedNodes(d, nodeGroups, linkPaths);
           }
         })
         .on("mouseleave", () => {
           if (!isOptimizedMode) {
+            setHoveredNode(null);
             onNodeHover?.(null);
             clearHighlights(nodeGroups, linkPaths);
           }
@@ -577,6 +585,7 @@ export function NetworkVisualization({
     dimensions,
     onNodeClick,
     onNodeHover,
+    hoveredNode,
     isOptimizedMode,
     enableRealTimeStatus,
     networkStatus,
@@ -677,6 +686,29 @@ export function NetworkVisualization({
         )}
 
         <svg ref={svgRef} className="w-full h-full" />
+
+        {/* 서브넷 타입 범례 */}
+        <div className="absolute bottom-4 left-4 z-10">
+          <div className="bg-white/90 backdrop-blur-sm border border-gray-200 rounded-lg p-3 shadow-sm">
+            <h4 className="text-xs font-semibold text-gray-700 mb-2">
+              서브넷 타입
+            </h4>
+            <div className="space-y-1.5">
+              <div className="flex items-center">
+                <div className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: "#10b981" }} />
+                <span className="text-xs text-gray-600">퍼블릭 (IGW)</span>
+              </div>
+              <div className="flex items-center">
+                <div className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: "#f59e0b" }} />
+                <span className="text-xs text-gray-600">프라이빗 (NAT)</span>
+              </div>
+              <div className="flex items-center">
+                <div className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: "#ef4444" }} />
+                <span className="text-xs text-gray-600">격리됨</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </VisualizationErrorBoundary>
   );
@@ -799,6 +831,7 @@ function filterEdges(
   edges: EdgeData[],
   nodes: NodeData[],
   filters?: FilterOptions,
+  hoveredNode?: NodeData | null,
 ): EdgeData[] {
   if (!filters) return edges;
 
@@ -820,6 +853,16 @@ function filterEdges(
 
     // 고급 필터 지원
     const advancedFilters = filters as any;
+
+    if (edge.metadata.scope === "SUBNET") {
+      if (!hoveredNode || hoveredNode.type !== NodeType.SUBNET) {
+        return false;
+      }
+
+      if (edge.source !== hoveredNode.id && edge.target !== hoveredNode.id) {
+        return false;
+      }
+    }
 
     // 연결 상태 필터
     if (
@@ -1037,7 +1080,21 @@ function getNodeHeight(type: NodeType): number {
   }
 }
 
-function getNodeColor(type: NodeType): string {
+function getNodeColor(type: NodeType, metadata?: Record<string, any>): string {
+  // 서브넷 타입에 따라 색상 구분
+  if (type === NodeType.SUBNET && metadata?.subnetType) {
+    switch (metadata.subnetType) {
+      case "PUBLIC":
+        return "#10b981"; // emerald (퍼블릭)
+      case "PRIVATE_WITH_NAT":
+        return "#f59e0b"; // amber (프라이빗 with NAT)
+      case "PRIVATE_ISOLATED":
+        return "#ef4444"; // red (격리된 프라이빗)
+      default:
+        return "#f59e0b"; // amber (기본)
+    }
+  }
+
   switch (type) {
     case NodeType.ACCOUNT:
       return "#3b82f6"; // blue
@@ -1046,7 +1103,7 @@ function getNodeColor(type: NodeType): string {
     case NodeType.VPC:
       return "#8b5cf6"; // violet
     case NodeType.SUBNET:
-      return "#f59e0b"; // amber
+      return "#f59e0b"; // amber (기본값)
     case NodeType.IGW:
       return "#ef4444"; // red
     case NodeType.NAT:
@@ -1056,8 +1113,8 @@ function getNodeColor(type: NodeType): string {
   }
 }
 
-function getNodeBorderColor(type: NodeType): string {
-  const baseColor = getNodeColor(type);
+function getNodeBorderColor(type: NodeType, metadata?: Record<string, any>): string {
+  const baseColor = getNodeColor(type, metadata);
   return d3.color(baseColor)?.darker(0.5)?.toString() || baseColor;
 }
 

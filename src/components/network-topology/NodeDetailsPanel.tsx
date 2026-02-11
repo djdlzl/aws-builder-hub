@@ -111,6 +111,65 @@ export function NodeDetailsPanel({
       );
     }
 
+    // routes 배열 특별 처리
+    if (key === "routes" && Array.isArray(value) && value.length > 0) {
+      return (
+        <div className="space-y-2">
+          {value.map((route: any, index: number) => (
+            <div
+              key={index}
+              className="text-xs bg-muted p-2 rounded space-y-1 border-l-2 border-primary/30"
+            >
+              <div>
+                <span className="font-medium">목적지: </span>
+                <code className="text-xs">{route.destinationCidr || "N/A"}</code>
+              </div>
+              <div>
+                <span className="font-medium">타겟: </span>
+                <code className="text-xs">{route.target}</code>
+              </div>
+              <div>
+                <span className="font-medium">타입: </span>
+                <Badge variant="outline" className="text-xs">
+                  {route.targetType}
+                </Badge>
+              </div>
+              <div>
+                <span className="font-medium">상태: </span>
+                <Badge
+                  variant={route.state === "ACTIVE" ? "default" : "secondary"}
+                  className="text-xs"
+                >
+                  {route.state}
+                </Badge>
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    // tags 객체 특별 처리
+    if (key === "tags" && typeof value === "object" && value !== null) {
+      const tags = value as Record<string, string>;
+      const tagEntries = Object.entries(tags);
+      if (tagEntries.length === 0) {
+        return <span className="text-sm text-muted-foreground">태그 없음</span>;
+      }
+      return (
+        <div className="space-y-1">
+          {tagEntries.map(([tagKey, tagValue]) => (
+            <div key={tagKey} className="flex items-center gap-2">
+              <Badge variant="outline" className="text-xs">
+                {tagKey}
+              </Badge>
+              <span className="text-xs">{tagValue}</span>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
     if (typeof value === "object" && value !== null) {
       return (
         <pre className="text-xs bg-muted p-2 rounded overflow-x-auto">
@@ -257,20 +316,25 @@ export function NodeDetailsPanel({
   );
 
   return (
-    <Card className={`w-96 ${className}`}>
-      <CardHeader className="pb-3">
+    <Card className={`w-96 flex flex-col h-full ${className}`}>
+      <CardHeader className="pb-3 flex-shrink-0">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-lg">
             {getNodeIcon(node.type)}
             노드 상세 정보
           </CardTitle>
-          <Button variant="ghost" size="sm" onClick={onClose}>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onClose}
+            className="h-8 w-8 rounded-full hover:bg-destructive/10 hover:text-destructive"
+          >
             <X className="h-4 w-4" />
           </Button>
         </div>
       </CardHeader>
 
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-4 overflow-y-auto flex-1 min-h-0">
         {/* 기본 정보 */}
         <div className="space-y-3">
           <div className="flex items-center gap-2">
@@ -279,7 +343,11 @@ export function NodeDetailsPanel({
 
           <div>
             <h3 className="font-semibold text-lg break-all">{node.label}</h3>
-            <p className="text-sm text-muted-foreground break-all">{node.id}</p>
+            {node.label !== node.id && (
+              <p className="text-sm text-muted-foreground break-all font-mono">
+                {node.id}
+              </p>
+            )}
           </div>
         </div>
 

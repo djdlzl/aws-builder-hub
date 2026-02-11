@@ -78,6 +78,8 @@ export interface VpcHierarchy {
   cidrBlock: string;
   subnets: Record<string, SubnetHierarchy>;
   gateways: Record<string, GatewayHierarchy>;
+  tags?: Record<string, string>;
+  name?: string;
 }
 
 export interface SubnetHierarchy {
@@ -85,6 +87,17 @@ export interface SubnetHierarchy {
   cidrBlock: string;
   availabilityZone: string;
   isPublic: boolean;
+  tags?: Record<string, string>;
+  name?: string;
+  routeTableId?: string;
+  routes?: RouteInfo[];
+}
+
+export interface RouteInfo {
+  destinationCidr?: string | null;
+  target: string;
+  targetType: string;
+  state: string;
 }
 
 export interface GatewayHierarchy {

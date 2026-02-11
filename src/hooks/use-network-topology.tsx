@@ -8,6 +8,7 @@ import React, {
   useReducer,
   useCallback,
   useEffect,
+  useRef,
 } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import type {
@@ -86,6 +87,7 @@ export function NetworkTopologyProvider({
 }: NetworkTopologyProviderProps) {
   const [state, dispatch] = useReducer(networkTopologyReducer, initialState);
   const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const wasSyncingRef = useRef(false);
 
   // 토폴로지 데이터 조회
   const fetchTopologyData = useCallback(async () => {
@@ -217,6 +219,32 @@ export function NetworkTopologyProvider({
     fetchTopologyData,
     fetchCacheStatus,
     fetchSyncProgress,
+  ]);
+
+  // 동기화 진행 중일 때 주기적으로 진행률 갱신
+  useEffect(() => {
+    const isInProgress = state.syncProgress?.isInProgress ?? false;
+
+    if (!isInProgress) {
+      if (wasSyncingRef.current) {
+        fetchTopologyData();
+        fetchCacheStatus();
+      }
+      wasSyncingRef.current = false;
+      return;
+    }
+
+    wasSyncingRef.current = true;
+    const intervalId = window.setInterval(() => {
+      fetchSyncProgress();
+    }, 3000);
+
+    return () => window.clearInterval(intervalId);
+  }, [
+    state.syncProgress?.isInProgress,
+    fetchSyncProgress,
+    fetchTopologyData,
+    fetchCacheStatus,
   ]);
 
   const value = {

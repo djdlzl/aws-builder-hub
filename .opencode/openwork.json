@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "workspace": {
+    "name": "builder-hub",
+    "createdAt": 1769653418076,
+    "preset": "starter"
+  },
+  "authorizedRoots": [
+    "/Users/harvey/workspace/builder-hub"
+  ]
+}
