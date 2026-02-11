@@ -23,21 +23,6 @@ interface DashboardStats {
   accountCount: number;
 }
 
-interface ResourceByAccount {
-  accountId: string;
-  accountName: string;
-  ec2Count: number;
-  rdsCount: number;
-  s3Count: number;
-}
-
-interface ResourceByRegion {
-  region: string;
-  ec2Count: number;
-  rdsCount: number;
-  s3Count: number;
-}
-
 import { useAWSContext } from "@/hooks/use-aws-context";
 
 const regionLabels: Record<string, string> = {
@@ -52,19 +37,13 @@ const formatRegionLabel = (region?: string) =>
   regionLabels[region ?? ""] ?? region ?? "Unknown";
 
 export default function Dashboard() {
-  const { selectedAccount, accounts } = useAWSContext();
+  const { selectedAccount, selectedRegion, accounts } = useAWSContext();
   const [stats, setStats] = useState<DashboardStats>({
     ec2Count: 0,
     rdsCount: 0,
     s3Count: 0,
     accountCount: 0,
   });
-  const [resourcesByAccount, setResourcesByAccount] = useState<
-    ResourceByAccount[]
-  >([]);
-  const [resourcesByRegion, setResourcesByRegion] = useState<
-    ResourceByRegion[]
-  >([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const isAdmin = localStorage.getItem("user_role") === "ADMIN";
@@ -91,118 +70,40 @@ export default function Dashboard() {
     async (showRefreshToast = false) => {
       if (accounts.length === 0) {
         setStats({ ec2Count: 0, rdsCount: 0, s3Count: 0, accountCount: 0 });
-        setResourcesByAccount([]);
-        setResourcesByRegion([]);
         setIsLoading(false);
         setIsRefreshing(false);
         return;
       }
 
       const isDemoAdmin =
-        localStorage.getItem("cloudforge_auth_token") ===
+        localStorage.getItem("builderhub_auth_token") ===
         "mock-token-admin-demo";
       const isMockAdmin =
-        localStorage.getItem("cloudforge_auth_token") === "mock-token-admin";
+        localStorage.getItem("builderhub_auth_token") === "mock-token-admin";
 
       if (isDemoAdmin) {
-        // ... dummy data ...
-        const dummyByAccount: ResourceByAccount[] = [
-          {
-            accountId: "123456789012",
-            accountName: "Demo Production Account",
-            ec2Count: 8,
-            rdsCount: 4,
-            s3Count: 5,
-          },
-          {
-            accountId: "210987654321",
-            accountName: "Demo Development Account",
-            ec2Count: 4,
-            rdsCount: 2,
-            s3Count: 4,
-          },
-          {
-            accountId: "345678901234",
-            accountName: "Demo Staging Account",
-            ec2Count: 3,
-            rdsCount: 2,
-            s3Count: 3,
-          },
-        ];
+        const dummyStats = {
+          ec2Count: 15,
+          rdsCount: 8,
+          s3Count: 12,
+          accountCount: 3,
+        };
 
-        const dummyByRegion: ResourceByRegion[] = [
-          { region: "ap-northeast-2", ec2Count: 10, rdsCount: 5, s3Count: 8 },
-          { region: "us-east-1", ec2Count: 3, rdsCount: 2, s3Count: 3 },
-          { region: "eu-west-1", ec2Count: 2, rdsCount: 1, s3Count: 1 },
-        ]; // This assumes global region stats, but strictly we should filter resources first then group.
-        // For dummy data simplicity, I'll just filter resources first if I had raw resources.
-        // Since dummy data is pre-aggregated, I'll just use it as is for now or mock it better.
-        // Let's just filter the account list.
-
-        // Re-calculating dummy stats based on selected account
-        const dummySummary = dummyByAccount.reduce(
-          (acc, item) => ({
-            ec2Count: acc.ec2Count + item.ec2Count,
-            rdsCount: acc.rdsCount + item.rdsCount,
-            s3Count: acc.s3Count + item.s3Count,
-          }),
-          { ec2Count: 0, rdsCount: 0, s3Count: 0 },
-        );
-
-        setStats({
-          ...dummySummary,
-          accountCount: dummyByAccount.length,
-        });
-        setResourcesByAccount(dummyByAccount);
-        setResourcesByRegion(dummyByRegion);
-
+        setStats(dummyStats);
         setIsLoading(false);
         if (showRefreshToast) toast.success("Dashboard refreshed");
         return;
       }
 
       if (isMockAdmin) {
-        // Same logic for mock admin
-        const dummyByAccount: ResourceByAccount[] = [
-          {
-            accountId: "123456789012",
-            accountName: "Production Account",
-            ec2Count: 5,
-            rdsCount: 3,
-            s3Count: 4,
-          },
-          {
-            accountId: "210987654321",
-            accountName: "Development Account",
-            ec2Count: 3,
-            rdsCount: 1,
-            s3Count: 2,
-          },
-        ];
+        const dummyStats = {
+          ec2Count: 8,
+          rdsCount: 4,
+          s3Count: 6,
+          accountCount: 2,
+        };
 
-        const dummySummary = dummyByAccount.reduce(
-          (acc, item) => ({
-            ec2Count: acc.ec2Count + item.ec2Count,
-            rdsCount: acc.rdsCount + item.rdsCount,
-            s3Count: acc.s3Count + item.s3Count,
-          }),
-          { ec2Count: 0, rdsCount: 0, s3Count: 0 },
-        );
-
-        setStats({
-          ...dummySummary,
-          accountCount: dummyByAccount.length,
-        });
-        setResourcesByAccount(dummyByAccount);
-        setResourcesByRegion([
-          {
-            region: "ap-northeast-2",
-            ec2Count: dummySummary.ec2Count,
-            rdsCount: dummySummary.rdsCount,
-            s3Count: dummySummary.s3Count,
-          },
-        ]);
-
+        setStats(dummyStats);
         setIsLoading(false);
         if (showRefreshToast) toast.success("Dashboard refreshed");
         return;
@@ -225,84 +126,38 @@ export default function Dashboard() {
         const rdsList = rdsRes.ok ? (await rdsRes.json()).results || [] : [];
         const s3List = s3Res.ok ? (await s3Res.json()).results || [] : [];
 
-        const activeEc2 = ec2List.filter(
+        const filterByAccountAndRegion = (list: any[]) => {
+          let filtered = list;
+          if (selectedAccount) {
+            filtered = filtered.filter(
+              (r: { accountName?: string }) => r.accountName === selectedAccount.name
+            );
+          }
+          if (selectedRegion) {
+            filtered = filtered.filter(
+              (r: { region?: string }) => r.region === selectedRegion.code
+            );
+          }
+          return filtered;
+        };
+
+        const filteredEc2 = filterByAccountAndRegion(ec2List);
+        const filteredRds = filterByAccountAndRegion(rdsList);
+        const filteredS3 = filterByAccountAndRegion(s3List);
+
+        const activeEc2 = filteredEc2.filter(
           (r: { state?: string }) => !isEc2Terminated(r.state),
         );
-        const activeRds = rdsList.filter(
+        const activeRds = filteredRds.filter(
           (r: { status?: string }) => !isRdsTerminated(r.status),
         );
 
         setStats({
           ec2Count: activeEc2.length,
           rdsCount: activeRds.length,
-          s3Count: s3List.length,
+          s3Count: filteredS3.length,
           accountCount: accounts.length,
         });
-
-        // Group by account
-        const accountMap = new Map<string, ResourceByAccount>();
-        [...activeEc2, ...activeRds, ...s3List].forEach(
-          (r: { accountName?: string; accountId?: string }) => {
-            const key = r.accountName || r.accountId || "Unknown";
-            if (!accountMap.has(key)) {
-              accountMap.set(key, {
-                accountId: r.accountId || "",
-                accountName: key,
-                ec2Count: 0,
-                rdsCount: 0,
-                s3Count: 0,
-              });
-            }
-          },
-        );
-        activeEc2.forEach((r: { accountName?: string }) => {
-          const key = r.accountName || "Unknown";
-          const acc = accountMap.get(key);
-          if (acc) acc.ec2Count++;
-        });
-        activeRds.forEach((r: { accountName?: string }) => {
-          const key = r.accountName || "Unknown";
-          const acc = accountMap.get(key);
-          if (acc) acc.rdsCount++;
-        });
-        s3List.forEach((r: { accountName?: string }) => {
-          const key = r.accountName || "Unknown";
-          const acc = accountMap.get(key);
-          if (acc) acc.s3Count++;
-        });
-        setResourcesByAccount(Array.from(accountMap.values()));
-
-        // Group by region
-        const regionMap = new Map<string, ResourceByRegion>();
-        [...activeEc2, ...activeRds, ...s3List].forEach(
-          (r: { region?: string }) => {
-            const key = r.region || "Unknown";
-            if (!regionMap.has(key)) {
-              regionMap.set(key, {
-                region: key,
-                ec2Count: 0,
-                rdsCount: 0,
-                s3Count: 0,
-              });
-            }
-          },
-        );
-        activeEc2.forEach((r: { region?: string }) => {
-          const key = r.region || "Unknown";
-          const reg = regionMap.get(key);
-          if (reg) reg.ec2Count++;
-        });
-        activeRds.forEach((r: { region?: string }) => {
-          const key = r.region || "Unknown";
-          const reg = regionMap.get(key);
-          if (reg) reg.rdsCount++;
-        });
-        s3List.forEach((r: { region?: string }) => {
-          const key = r.region || "Unknown";
-          const reg = regionMap.get(key);
-          if (reg) reg.s3Count++;
-        });
-        setResourcesByRegion(Array.from(regionMap.values()));
 
         if (showRefreshToast) toast.success("Dashboard refreshed");
       } catch (error) {
@@ -313,7 +168,7 @@ export default function Dashboard() {
         setIsRefreshing(false);
       }
     },
-    [accounts],
+    [accounts, selectedAccount, selectedRegion],
   );
 
   const handleRefresh = async () => {
@@ -395,83 +250,21 @@ export default function Dashboard() {
             />
           </div>
 
-          {/* 리전별 리소스 현황 */}
-          <div className="space-y-4">
-            <h2 className="text-xl font-semibold text-foreground">
-              리전별 리소스
-            </h2>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {resourcesByRegion.map((r) => (
-                <div
-                  key={r.region}
-                  className="rounded-xl border border-border bg-card p-4"
-                >
-                  <p className="font-medium text-foreground mb-2">
-                    {formatRegionLabel(r.region)}
-                  </p>
-                  <div className="grid grid-cols-3 gap-2 text-sm">
-                    <div className="text-center">
-                      <p className="text-muted-foreground">EC2</p>
-                      <p className="font-bold text-foreground">{r.ec2Count}</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-muted-foreground">RDS</p>
-                      <p className="font-bold text-foreground">{r.rdsCount}</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-muted-foreground">S3</p>
-                      <p className="font-bold text-foreground">{r.s3Count}</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* 계정별 리소스 현황 */}
-          <div className="space-y-4">
-            <h2 className="text-xl font-semibold text-foreground">
-              계정별 리소스
-            </h2>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {resourcesByAccount.map((r) => (
-                <div
-                  key={r.accountId}
-                  className="rounded-xl border border-border bg-card p-4"
-                >
-                  <p className="font-medium text-foreground mb-2">
-                    {r.accountName}
-                  </p>
-                  <div className="grid grid-cols-3 gap-2 text-sm">
-                    <div className="text-center">
-                      <p className="text-muted-foreground">EC2</p>
-                      <p className="font-bold text-foreground">{r.ec2Count}</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-muted-foreground">RDS</p>
-                      <p className="font-bold text-foreground">{r.rdsCount}</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-muted-foreground">S3</p>
-                      <p className="font-bold text-foreground">{r.s3Count}</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
           <div className="grid gap-6 lg:grid-cols-3">
             <div className="lg:col-span-2 space-y-4">
-              <div>
+                <div>
                 <h2 className="text-xl font-semibold text-foreground">
                   최근 리소스
                 </h2>
                 <p className="text-sm text-muted-foreground mt-1">
                   활성화된 AWS 리소스 목록
-                  {selectedAccount
-                    ? ` (${selectedAccount.name})`
-                    : " (전체 계정)"}
+                  {selectedAccount && selectedRegion
+                    ? ` (${selectedAccount.name} - ${formatRegionLabel(selectedRegion.code)})`
+                    : selectedAccount
+                      ? ` (${selectedAccount.name})`
+                      : selectedRegion
+                        ? ` (${formatRegionLabel(selectedRegion.code)})`
+                        : " (전체 계정)"}
                 </p>
               </div>
               <ResourceTable />

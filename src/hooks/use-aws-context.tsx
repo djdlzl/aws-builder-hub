@@ -37,7 +37,6 @@ const defaultRegions: AWSRegion[] = [
   { id: "3", name: "Singapore", code: "ap-southeast-1" },
   { id: "4", name: "US East (N. Virginia)", code: "us-east-1" },
   { id: "5", name: "US West (Oregon)", code: "us-west-2" },
-  { id: "6", name: "EU (Frankfurt)", code: "eu-central-1" },
 ];
 
 const AWSContext = createContext<AWSContextType | undefined>(undefined);
@@ -73,9 +72,9 @@ export function AWSProvider({ children }: { children: ReactNode }) {
 
     // Check if admin_demo user is logged in
     const isDemoAdmin =
-      localStorage.getItem("cloudforge_auth_token") === "mock-token-admin-demo";
+      localStorage.getItem("builderhub_auth_token") === "mock-token-admin-demo";
     const isMockAdmin =
-      localStorage.getItem("cloudforge_auth_token") === "mock-token-admin";
+      localStorage.getItem("builderhub_auth_token") === "mock-token-admin";
 
     if (isDemoAdmin) {
       // Load dummy AWS accounts for admin_demo

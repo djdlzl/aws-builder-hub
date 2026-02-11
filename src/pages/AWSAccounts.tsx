@@ -133,7 +133,7 @@ export default function AWSAccounts() {
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${localStorage.getItem(
-              "cloudforge_auth_token"
+              "builderhub_auth_token"
             )}`,
           },
           body: JSON.stringify(newAccount),
@@ -184,7 +184,7 @@ export default function AWSAccounts() {
           method: "POST",
           headers: {
             Authorization: `Bearer ${localStorage.getItem(
-              "cloudforge_auth_token"
+              "builderhub_auth_token"
             )}`,
           },
         }
@@ -339,7 +339,7 @@ export default function AWSAccounts() {
                   <Label htmlFor="roleArn">Role ARN *</Label>
                   <Input
                     id="roleArn"
-                    placeholder="arn:aws:iam::123456789012:role/CloudForgeRole"
+                    placeholder="arn:aws:iam::123456789012:role/BuilderHubRole"
                     value={newAccount.roleArn}
                     onChange={(e) =>
                       setNewAccount({ ...newAccount, roleArn: e.target.value })
@@ -485,7 +485,7 @@ export default function AWSAccounts() {
               </div>
               <h4 className="font-medium text-foreground">IAM Role 생성</h4>
               <p className="text-sm text-muted-foreground">
-                대상 AWS 계정에 CloudForge가 사용할 IAM Role을 생성합니다.
+                대상 AWS 계정에 Builder Hub가 사용할 IAM Role을 생성합니다.
               </p>
             </div>
             <div className="space-y-2">
@@ -494,7 +494,7 @@ export default function AWSAccounts() {
               </div>
               <h4 className="font-medium text-foreground">신뢰 정책 설정</h4>
               <p className="text-sm text-muted-foreground">
-                CloudForge 계정이 Role을 Assume할 수 있도록 신뢰 정책을
+                Builder Hub 계정이 Role을 Assume할 수 있도록 신뢰 정책을
                 설정합니다.
               </p>
             </div>

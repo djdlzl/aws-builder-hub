@@ -23,7 +23,7 @@ interface AuthContextType extends AuthState {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // Storage key for auth token
-const AUTH_TOKEN_KEY = "cloudforge_auth_token";
+const AUTH_TOKEN_KEY = "builderhub_auth_token";
 const isMockAuthEnabled = import.meta.env.MODE === "development";
 
 type ApiUser = {
@@ -196,10 +196,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             isLoading: false,
           });
           return { success: true };
-        } else if (email === "admin@cloudforge.io" && password === "password") {
+        } else if (email === "admin@builderhub.io" && password === "password") {
           const mockUser: User = {
             id: "1",
-            email: "admin@cloudforge.io",
+            email: "admin@builderhub.io",
             name: "Admin User",
             role: "admin",
           };
@@ -209,10 +209,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             isLoading: false,
           });
           return { success: true };
-        } else if (email === "dev@cloudforge.io" && password === "password") {
+        } else if (email === "dev@builderhub.io" && password === "password") {
           const mockUser: User = {
             id: "2",
-            email: "dev@cloudforge.io",
+            email: "dev@builderhub.io",
             name: "Developer User",
             role: "developer",
           };

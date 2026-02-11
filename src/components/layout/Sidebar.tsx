@@ -89,7 +89,7 @@ export function Sidebar() {
             <div className="h-8 w-8 rounded-lg gradient-primary flex items-center justify-center">
               <Box className="h-5 w-5 text-primary-foreground" />
             </div>
-            <span className="font-semibold text-foreground">CloudForge</span>
+            <span className="font-semibold text-foreground">Builder Hub</span>
           </div>
         )}
         <button

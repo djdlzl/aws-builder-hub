@@ -49,10 +49,10 @@ export function Header() {
     try {
       // Demo mode check
       const isDemoAdmin =
-        localStorage.getItem("cloudforge_auth_token") ===
+        localStorage.getItem("builderhub_auth_token") ===
         "mock-token-admin-demo";
       const isMockAdmin =
-        localStorage.getItem("cloudforge_auth_token") === "mock-token-admin";
+        localStorage.getItem("builderhub_auth_token") === "mock-token-admin";
 
       if (isDemoAdmin || isMockAdmin) {
         // Demo search results

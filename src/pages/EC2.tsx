@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -47,6 +47,9 @@ import {
   Clock,
   Terminal,
   RefreshCw,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 import { SSMTerminal } from "@/components/terminal/SSMTerminal";
 import { toast } from "sonner";
@@ -109,13 +112,113 @@ const instanceTypeLabels: Record<string, string> = {
 
 const formatInstanceType = (type: string) => instanceTypeLabels[type] ?? type;
 
+const COLUMN_WIDTHS_STORAGE_KEY = "ec2-column-widths";
+
+// 기본 컬럼 너비 설정
+const DEFAULT_COLUMN_WIDTHS = {
+  name: 180,
+  id: 200,
+  type: 110,
+  account: 180,
+  status: 90,
+  publicIp: 140,
+  privateIp: 140,
+  az: 160,
+  action: 150,
+};
+
+type SortColumn = 'name' | 'id' | 'type' | 'account' | 'status' | 'publicIp' | 'privateIp' | 'az';
+type SortDirection = 'asc' | 'desc' | null;
+
 export default function EC2() {
   const [instances, setInstances] = useState<EC2Instance[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const { accounts, selectedAccount } = useAWSContext();
+  const refreshPollRef = useRef<number | null>(null);
+  const refreshAttemptsRef = useRef(0);
+  const { accounts, selectedAccount, selectedRegion } = useAWSContext();
+
+  // 컬럼 너비 상태 (localStorage에서 로드 또는 기본값)
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>(() => {
+    try {
+      const saved = localStorage.getItem(COLUMN_WIDTHS_STORAGE_KEY);
+      return saved ? JSON.parse(saved) : DEFAULT_COLUMN_WIDTHS;
+    } catch (error) {
+      console.error("Failed to load column widths:", error);
+      return DEFAULT_COLUMN_WIDTHS;
+    }
+  });
+
+  // 정렬 상태
+  const [sortColumn, setSortColumn] = useState<SortColumn | null>(null);
+  const [sortDirection, setSortDirection] = useState<SortDirection>(null);
+
+  // 컬럼 리사이즈
+  const resizingRef = useRef<{
+    key: string;
+    startX: number;
+    startWidth: number;
+  } | null>(null);
+
+  const handleResizeStart = (key: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startWidth = columnWidths[key] || 100;
+    resizingRef.current = { key, startX, startWidth };
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    const onMouseMove = (me: MouseEvent) => {
+      if (!resizingRef.current) return;
+      const minW = 60;
+      const delta = me.clientX - resizingRef.current.startX;
+      const newWidth = Math.max(minW, resizingRef.current.startWidth + delta);
+
+      setColumnWidths((prev) => ({
+        ...prev,
+        [resizingRef.current!.key]: newWidth,
+      }));
+    };
+
+    const onMouseUp = () => {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+
+      if (resizingRef.current) {
+        setColumnWidths((prev) => {
+          localStorage.setItem(COLUMN_WIDTHS_STORAGE_KEY, JSON.stringify(prev));
+          return prev;
+        });
+      }
+      resizingRef.current = null;
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    };
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  };
+
+  // 컬럼 정렬 핸들러
+  const handleSort = (column: SortColumn) => {
+    if (sortColumn === column) {
+      // 같은 컬럼 클릭: asc -> desc -> null 순환
+      if (sortDirection === 'asc') {
+        setSortDirection('desc');
+      } else if (sortDirection === 'desc') {
+        setSortColumn(null);
+        setSortDirection(null);
+      }
+    } else {
+      // 다른 컬럼 클릭: 오름차순으로 시작
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+  };
 
   const getAuthHeaders = () => {
     const token = localStorage.getItem("access_token");
@@ -139,10 +242,10 @@ export default function EC2() {
   const fetchInstances = useCallback(
     async (showToast = false, forceRefresh = false) => {
       const isDemoAdmin =
-        localStorage.getItem("cloudforge_auth_token") ===
+        localStorage.getItem("builderhub_auth_token") ===
         "mock-token-admin-demo";
       const isMockAdmin =
-        localStorage.getItem("cloudforge_auth_token") === "mock-token-admin";
+        localStorage.getItem("builderhub_auth_token") === "mock-token-admin";
 
       if (isDemoAdmin) {
         const dummyInstances: EC2Instance[] = [
@@ -287,15 +390,13 @@ export default function EC2() {
       }
 
       try {
-        const endpoint = forceRefresh
-          ? API_CONFIG.ENDPOINTS.AWS_RESOURCES.EC2_REFRESH
-          : API_CONFIG.ENDPOINTS.AWS_RESOURCES.EC2;
-        const response = await fetch(buildApiUrl(endpoint), {
-          method: forceRefresh ? "POST" : "GET",
+        const listEndpoint = API_CONFIG.ENDPOINTS.AWS_RESOURCES.EC2;
+        const listResponse = await fetch(buildApiUrl(listEndpoint), {
+          method: "GET",
           headers: getAuthHeaders(),
         });
-        if (response.ok) {
-          const data = await response.json();
+        if (listResponse.ok) {
+          const data = await listResponse.json();
           const list = (data.results || [])
             .map(
               (inst: {
@@ -333,8 +434,17 @@ export default function EC2() {
               )
             : list;
 
-          setInstances(filtered);
-          if (showToast) toast.success("EC2 instances refreshed");
+          // Filter by selected region if set
+          const filteredByRegion = selectedRegion
+            ? filtered.filter(
+                (i: EC2Instance) => i.region === selectedRegion.code,
+              )
+            : filtered;
+
+          setInstances(filteredByRegion);
+          if (!forceRefresh && showToast) {
+            toast.success("EC2 instances refreshed");
+          }
         }
       } catch (error) {
         console.error("Failed to fetch EC2 instances:", error);
@@ -344,21 +454,96 @@ export default function EC2() {
         setIsRefreshing(false);
       }
     },
-    [accounts, selectedAccount],
+    [accounts, selectedAccount, selectedRegion],
+  );
+
+  const stopRefreshPolling = useCallback(() => {
+    if (refreshPollRef.current !== null) {
+      window.clearInterval(refreshPollRef.current);
+      refreshPollRef.current = null;
+    }
+    refreshAttemptsRef.current = 0;
+  }, []);
+
+  const startRefreshPolling = useCallback(() => {
+    const statusEndpoint = API_CONFIG.ENDPOINTS.AWS_RESOURCES.EC2_REFRESH_STATUS;
+    if (refreshPollRef.current !== null) {
+      return;
+    }
+
+    refreshPollRef.current = window.setInterval(async () => {
+      refreshAttemptsRef.current += 1;
+      if (refreshAttemptsRef.current > 60) {
+        stopRefreshPolling();
+        setIsRefreshing(false);
+        return;
+      }
+
+      try {
+        const statusResponse = await fetch(buildApiUrl(statusEndpoint), {
+          headers: getAuthHeaders(),
+        });
+        if (!statusResponse.ok) {
+          throw new Error("Failed to fetch refresh status");
+        }
+        const statusData = await statusResponse.json();
+        const inProgress = statusData?.result?.inProgress ?? false;
+        if (!inProgress) {
+          stopRefreshPolling();
+          await fetchInstances(false, false);
+          setIsRefreshing(false);
+        }
+      } catch (error) {
+        console.error("Failed to poll EC2 refresh status:", error);
+        stopRefreshPolling();
+        setIsRefreshing(false);
+      }
+    }, 5000);
+  }, [fetchInstances, stopRefreshPolling]);
+
+  const triggerBackgroundRefresh = useCallback(
+    async (showToast: boolean) => {
+      if (accounts.length === 0) {
+        return;
+      }
+      setIsRefreshing(true);
+      const refreshEndpoint = API_CONFIG.ENDPOINTS.AWS_RESOURCES.EC2_REFRESH;
+      try {
+        const refreshResponse = await fetch(buildApiUrl(refreshEndpoint), {
+          method: "POST",
+          headers: getAuthHeaders(),
+        });
+        if (!refreshResponse.ok) {
+          if (showToast) toast.error("Failed to refresh EC2 instances");
+          setIsRefreshing(false);
+          return;
+        }
+        if (showToast) toast.success("EC2 instances refreshed");
+        startRefreshPolling();
+      } catch (error) {
+        console.error("Failed to start EC2 refresh:", error);
+        if (showToast) toast.error("Failed to refresh EC2 instances");
+        setIsRefreshing(false);
+      }
+    },
+    [accounts.length, startRefreshPolling],
   );
 
   const handleRefresh = async () => {
-    setIsRefreshing(true);
-    await fetchInstances(true, true);
+    await triggerBackgroundRefresh(true);
   };
 
   useEffect(() => {
     fetchInstances();
-  }, [fetchInstances]);
+    triggerBackgroundRefresh(false);
+    return () => {
+      stopRefreshPolling();
+    };
+  }, [fetchInstances, stopRefreshPolling, triggerBackgroundRefresh]);
 
-  // Filtered instances based on search and filters
+  // Filtered and sorted instances based on search, filters, and sort
   const filteredInstances = useMemo(() => {
-    return instances.filter((inst) => {
+    let result = instances.filter((inst) => {
       const matchesSearch =
         searchQuery === "" ||
         inst.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -370,7 +555,56 @@ export default function EC2() {
         statusFilter === "all" || inst.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
-  }, [instances, searchQuery, statusFilter]);
+
+    // 정렬 적용
+    if (sortColumn && sortDirection) {
+      result = [...result].sort((a, b) => {
+        let aValue: string | number = '';
+        let bValue: string | number = '';
+
+        switch (sortColumn) {
+          case 'name':
+            aValue = a.name.toLowerCase();
+            bValue = b.name.toLowerCase();
+            break;
+          case 'id':
+            aValue = a.id.toLowerCase();
+            bValue = b.id.toLowerCase();
+            break;
+          case 'type':
+            aValue = a.type.toLowerCase();
+            bValue = b.type.toLowerCase();
+            break;
+          case 'account':
+            aValue = (a.accountName || '').toLowerCase();
+            bValue = (b.accountName || '').toLowerCase();
+            break;
+          case 'status':
+            aValue = a.status;
+            bValue = b.status;
+            break;
+          case 'publicIp':
+            aValue = a.publicIp.toLowerCase();
+            bValue = b.publicIp.toLowerCase();
+            break;
+          case 'privateIp':
+            aValue = a.privateIp.toLowerCase();
+            bValue = b.privateIp.toLowerCase();
+            break;
+          case 'az':
+            aValue = a.az.toLowerCase();
+            bValue = b.az.toLowerCase();
+            break;
+        }
+
+        if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+        if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+
+    return result;
+  }, [instances, searchQuery, statusFilter, sortColumn, sortDirection]);
 
   // Get unique account names for filter
   const uniqueAccounts = useMemo(() => {
@@ -643,8 +877,8 @@ export default function EC2() {
 
   // 데모/모의 관리자 여부 확인 - 계정이 없어도 인스턴스 표시
   const isDemoOrMockAdmin =
-    localStorage.getItem("cloudforge_auth_token") === "mock-token-admin-demo" ||
-    localStorage.getItem("cloudforge_auth_token") === "mock-token-admin";
+    localStorage.getItem("builderhub_auth_token") === "mock-token-admin-demo" ||
+    localStorage.getItem("builderhub_auth_token") === "mock-token-admin";
 
   if (accounts.length === 0 && !isDemoOrMockAdmin) {
     return (
@@ -901,32 +1135,212 @@ export default function EC2() {
         </Button>
       </div>
 
-      <div className="rounded-xl border border-border bg-card overflow-hidden">
+      <div className="rounded-xl border border-border bg-card overflow-x-auto">
         <table className="w-full">
           <thead>
             <tr className="border-b border-border bg-muted/30">
-              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                인스턴스
+              {/* 이름 */}
+              <th className="relative px-4 py-3 text-left" style={{ width: columnWidths.name }}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleSort('name')}
+                  className="h-auto p-0 hover:bg-transparent text-xs font-medium text-muted-foreground uppercase tracking-wider"
+                >
+                  <span className="flex items-center gap-1">
+                    이름 ({filteredInstances.length})
+                    {sortColumn === 'name' ? (
+                      sortDirection === 'asc' ? (
+                        <ArrowUp className="h-3 w-3" />
+                      ) : (
+                        <ArrowDown className="h-3 w-3" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="h-3 w-3 opacity-50" />
+                    )}
+                  </span>
+                </Button>
+                <div className="absolute right-0 top-0 h-full w-1 flex items-center justify-center cursor-col-resize group hover:bg-primary/10 z-10" onMouseDown={(e) => handleResizeStart("name", e)}>
+                  <div className="w-px h-full bg-border group-hover:bg-primary transition-colors" />
+                </div>
               </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                타입
+              {/* ID */}
+              <th className="relative px-4 py-3 text-left" style={{ width: columnWidths.id }}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleSort('id')}
+                  className="h-auto p-0 hover:bg-transparent text-xs font-medium text-muted-foreground uppercase tracking-wider"
+                >
+                  <span className="flex items-center gap-1">
+                    인스턴스 ID
+                    {sortColumn === 'id' ? (
+                      sortDirection === 'asc' ? (
+                        <ArrowUp className="h-3 w-3" />
+                      ) : (
+                        <ArrowDown className="h-3 w-3" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="h-3 w-3 opacity-50" />
+                    )}
+                  </span>
+                </Button>
+                <div className="absolute right-0 top-0 h-full w-1 flex items-center justify-center cursor-col-resize group hover:bg-primary/10 z-10" onMouseDown={(e) => handleResizeStart("id", e)}>
+                  <div className="w-px h-full bg-border group-hover:bg-primary transition-colors" />
+                </div>
               </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                계정
+              {/* 타입 */}
+              <th className="relative px-4 py-3 text-left" style={{ width: columnWidths.type }}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleSort('type')}
+                  className="h-auto p-0 hover:bg-transparent text-xs font-medium text-muted-foreground uppercase tracking-wider"
+                >
+                  <span className="flex items-center gap-1">
+                    타입
+                    {sortColumn === 'type' ? (
+                      sortDirection === 'asc' ? (
+                        <ArrowUp className="h-3 w-3" />
+                      ) : (
+                        <ArrowDown className="h-3 w-3" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="h-3 w-3 opacity-50" />
+                    )}
+                  </span>
+                </Button>
+                <div className="absolute right-0 top-0 h-full w-1 flex items-center justify-center cursor-col-resize group hover:bg-primary/10 z-10" onMouseDown={(e) => handleResizeStart("type", e)}>
+                  <div className="w-px h-full bg-border group-hover:bg-primary transition-colors" />
+                </div>
               </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                상태
+              {/* 계정 */}
+              <th className="relative px-4 py-3 text-left" style={{ width: columnWidths.account }}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleSort('account')}
+                  className="h-auto p-0 hover:bg-transparent text-xs font-medium text-muted-foreground uppercase tracking-wider"
+                >
+                  <span className="flex items-center gap-1">
+                    계정
+                    {sortColumn === 'account' ? (
+                      sortDirection === 'asc' ? (
+                        <ArrowUp className="h-3 w-3" />
+                      ) : (
+                        <ArrowDown className="h-3 w-3" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="h-3 w-3 opacity-50" />
+                    )}
+                  </span>
+                </Button>
+                <div className="absolute right-0 top-0 h-full w-1 flex items-center justify-center cursor-col-resize group hover:bg-primary/10 z-10" onMouseDown={(e) => handleResizeStart("account", e)}>
+                  <div className="w-px h-full bg-border group-hover:bg-primary transition-colors" />
+                </div>
               </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Public IP
+              {/* 상태 */}
+              <th className="relative px-4 py-3 text-left" style={{ width: columnWidths.status }}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleSort('status')}
+                  className="h-auto p-0 hover:bg-transparent text-xs font-medium text-muted-foreground uppercase tracking-wider"
+                >
+                  <span className="flex items-center gap-1">
+                    상태
+                    {sortColumn === 'status' ? (
+                      sortDirection === 'asc' ? (
+                        <ArrowUp className="h-3 w-3" />
+                      ) : (
+                        <ArrowDown className="h-3 w-3" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="h-3 w-3 opacity-50" />
+                    )}
+                  </span>
+                </Button>
+                <div className="absolute right-0 top-0 h-full w-1 flex items-center justify-center cursor-col-resize group hover:bg-primary/10 z-10" onMouseDown={(e) => handleResizeStart("status", e)}>
+                  <div className="w-px h-full bg-border group-hover:bg-primary transition-colors" />
+                </div>
               </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Private IP
+              {/* Public IP */}
+              <th className="relative px-4 py-3 text-left" style={{ width: columnWidths.publicIp }}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleSort('publicIp')}
+                  className="h-auto p-0 hover:bg-transparent text-xs font-medium text-muted-foreground uppercase tracking-wider"
+                >
+                  <span className="flex items-center gap-1">
+                    Public IP
+                    {sortColumn === 'publicIp' ? (
+                      sortDirection === 'asc' ? (
+                        <ArrowUp className="h-3 w-3" />
+                      ) : (
+                        <ArrowDown className="h-3 w-3" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="h-3 w-3 opacity-50" />
+                    )}
+                  </span>
+                </Button>
+                <div className="absolute right-0 top-0 h-full w-1 flex items-center justify-center cursor-col-resize group hover:bg-primary/10 z-10" onMouseDown={(e) => handleResizeStart("publicIp", e)}>
+                  <div className="w-px h-full bg-border group-hover:bg-primary transition-colors" />
+                </div>
               </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                가용영역
+              {/* Private IP */}
+              <th className="relative px-4 py-3 text-left" style={{ width: columnWidths.privateIp }}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleSort('privateIp')}
+                  className="h-auto p-0 hover:bg-transparent text-xs font-medium text-muted-foreground uppercase tracking-wider"
+                >
+                  <span className="flex items-center gap-1">
+                    Private IP
+                    {sortColumn === 'privateIp' ? (
+                      sortDirection === 'asc' ? (
+                        <ArrowUp className="h-3 w-3" />
+                      ) : (
+                        <ArrowDown className="h-3 w-3" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="h-3 w-3 opacity-50" />
+                    )}
+                  </span>
+                </Button>
+                <div className="absolute right-0 top-0 h-full w-1 flex items-center justify-center cursor-col-resize group hover:bg-primary/10 z-10" onMouseDown={(e) => handleResizeStart("privateIp", e)}>
+                  <div className="w-px h-full bg-border group-hover:bg-primary transition-colors" />
+                </div>
               </th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              {/* 가용영역 */}
+              <th className="relative px-4 py-3 text-left" style={{ width: columnWidths.az }}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleSort('az')}
+                  className="h-auto p-0 hover:bg-transparent text-xs font-medium text-muted-foreground uppercase tracking-wider"
+                >
+                  <span className="flex items-center gap-1">
+                    가용영역
+                    {sortColumn === 'az' ? (
+                      sortDirection === 'asc' ? (
+                        <ArrowUp className="h-3 w-3" />
+                      ) : (
+                        <ArrowDown className="h-3 w-3" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="h-3 w-3 opacity-50" />
+                    )}
+                  </span>
+                </Button>
+                <div className="absolute right-0 top-0 h-full w-1 flex items-center justify-center cursor-col-resize group hover:bg-primary/10 z-10" onMouseDown={(e) => handleResizeStart("az", e)}>
+                  <div className="w-px h-full bg-border group-hover:bg-primary transition-colors" />
+                </div>
+              </th>
+              {/* 액션 */}
+              <th className="px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap text-right" style={{ width: columnWidths.action }}>
                 액션
               </th>
             </tr>
@@ -940,52 +1354,52 @@ export default function EC2() {
                     expandedTerminalId === instance.id ? "bg-accent/30" : ""
                   }`}
                 >
-                  <td className="px-4 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="h-9 w-9 rounded-lg bg-orange-500/10 flex items-center justify-center">
+                  <td className="px-4 py-4" style={{ width: columnWidths.name }}>
+                    <div className="flex items-center gap-3 min-w-0 overflow-hidden">
+                      <div className="h-9 w-9 shrink-0 rounded-lg bg-orange-500/10 flex items-center justify-center">
                         <Server className="h-4 w-4 text-orange-400" />
                       </div>
-                      <div>
-                        <p className="text-sm font-medium text-foreground">
-                          {instance.name}
-                        </p>
-                        <code className="text-xs font-mono text-muted-foreground">
-                          {instance.id}
-                        </code>
-                      </div>
+                      <p className="text-sm font-medium text-foreground truncate">
+                        {instance.name}
+                      </p>
                     </div>
                   </td>
-                  <td className="px-4 py-4">
-                    <Badge variant="outline" className="font-mono text-xs">
+                  <td className="px-4 py-4" style={{ width: columnWidths.id }}>
+                    <code className="text-xs font-mono text-muted-foreground truncate block">
+                      {instance.id}
+                    </code>
+                  </td>
+                  <td className="px-4 py-4" style={{ width: columnWidths.type }}>
+                    <Badge variant="outline" className="font-mono text-xs whitespace-nowrap">
                       {instance.type}
                     </Badge>
                   </td>
-                  <td className="px-4 py-4">
-                    <span className="text-sm text-muted-foreground">
+                  <td className="px-4 py-4 overflow-hidden" style={{ width: columnWidths.account }}>
+                    <span className="text-sm text-muted-foreground truncate block">
                       {instance.accountName || "-"}
                     </span>
                   </td>
-                  <td className="px-4 py-4">
-                    <Badge className={statusStyles[instance.status]}>
+                  <td className="px-4 py-4" style={{ width: columnWidths.status }}>
+                    <Badge className={`${statusStyles[instance.status]} whitespace-nowrap`}>
                       {statusLabels[instance.status]}
                     </Badge>
                   </td>
-                  <td className="px-4 py-4">
-                    <code className="text-sm font-mono text-foreground">
+                  <td className="px-4 py-4" style={{ width: columnWidths.publicIp }}>
+                    <code className="text-sm font-mono text-foreground truncate block">
                       {instance.publicIp}
                     </code>
                   </td>
-                  <td className="px-4 py-4">
-                    <code className="text-sm font-mono text-muted-foreground">
+                  <td className="px-4 py-4" style={{ width: columnWidths.privateIp }}>
+                    <code className="text-sm font-mono text-muted-foreground truncate block">
                       {instance.privateIp}
                     </code>
                   </td>
-                  <td className="px-4 py-4">
-                    <span className="text-sm text-muted-foreground">
+                  <td className="px-4 py-4 overflow-hidden" style={{ width: columnWidths.az }}>
+                    <span className="text-sm text-muted-foreground truncate block">
                       {instance.az}
                     </span>
                   </td>
-                  <td className="px-4 py-4">
+                  <td className="px-4 py-4" style={{ width: columnWidths.action }}>
                     <div className="flex items-center justify-end gap-1">
                       {instance.scheduledStopDate && (
                         <Badge
@@ -1053,7 +1467,7 @@ export default function EC2() {
                 {/* 터미널 확장 행 */}
                 {expandedTerminalId === instance.id && (
                   <tr key={`${instance.id}-terminal`}>
-                    <td colSpan={7} className="p-0">
+                    <td colSpan={9} className="p-0">
                       <div
                         className="border-t border-border bg-background animate-in slide-in-from-top-2 duration-200 overflow-hidden"
                         style={{ height: "700px" }}

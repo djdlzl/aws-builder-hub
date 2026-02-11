@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -117,7 +117,9 @@ export default function RDS() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const { accounts, selectedAccount } = useAWSContext();
+  const refreshPollRef = useRef<number | null>(null);
+  const refreshAttemptsRef = useRef(0);
+  const { accounts, selectedAccount, selectedRegion } = useAWSContext();
   const [createOpen, setCreateOpen] = useState(false);
   const [instanceName, setInstanceName] = useState("");
   const [engine, setEngine] = useState("");
@@ -175,10 +177,10 @@ export default function RDS() {
   const fetchInstances = useCallback(
     async (showToast = false, forceRefresh = false) => {
       const isDemoAdmin =
-        localStorage.getItem("cloudforge_auth_token") ===
+        localStorage.getItem("builderhub_auth_token") ===
         "mock-token-admin-demo";
       const isMockAdmin =
-        localStorage.getItem("cloudforge_auth_token") === "mock-token-admin";
+        localStorage.getItem("builderhub_auth_token") === "mock-token-admin";
 
       if (isDemoAdmin) {
         const dummyInstances: RDSInstance[] = [
@@ -297,15 +299,13 @@ export default function RDS() {
       }
 
       try {
-        const endpoint = forceRefresh
-          ? API_CONFIG.ENDPOINTS.AWS_RESOURCES.RDS_REFRESH
-          : API_CONFIG.ENDPOINTS.AWS_RESOURCES.RDS;
-        const response = await fetch(buildApiUrl(endpoint), {
-          method: forceRefresh ? "POST" : "GET",
+        const listEndpoint = API_CONFIG.ENDPOINTS.AWS_RESOURCES.RDS;
+        const listResponse = await fetch(buildApiUrl(listEndpoint), {
+          method: "GET",
           headers: getAuthHeaders(),
         });
-        if (response.ok) {
-          const data = await response.json();
+        if (listResponse.ok) {
+          const data = await listResponse.json();
           const list = (data.results || [])
             .map(
               (inst: {
@@ -347,8 +347,14 @@ export default function RDS() {
             ? list.filter((i) => i.accountName === selectedAccount.name)
             : list;
 
-          setInstances(filtered);
-          if (showToast) toast.success("RDS instances refreshed");
+          const filteredByRegion = selectedRegion
+            ? filtered.filter((i) => i.region === selectedRegion.code)
+            : filtered;
+
+          setInstances(filteredByRegion);
+          if (!forceRefresh && showToast) {
+            toast.success("RDS instances refreshed");
+          }
         }
       } catch (error) {
         console.error("Failed to fetch RDS instances:", error);
@@ -358,17 +364,92 @@ export default function RDS() {
         setIsRefreshing(false);
       }
     },
-    [accounts, selectedAccount],
+    [accounts, selectedAccount, selectedRegion],
+  );
+
+  const stopRefreshPolling = useCallback(() => {
+    if (refreshPollRef.current !== null) {
+      window.clearInterval(refreshPollRef.current);
+      refreshPollRef.current = null;
+    }
+    refreshAttemptsRef.current = 0;
+  }, []);
+
+  const startRefreshPolling = useCallback(() => {
+    const statusEndpoint = API_CONFIG.ENDPOINTS.AWS_RESOURCES.RDS_REFRESH_STATUS;
+    if (refreshPollRef.current !== null) {
+      return;
+    }
+
+    refreshPollRef.current = window.setInterval(async () => {
+      refreshAttemptsRef.current += 1;
+      if (refreshAttemptsRef.current > 60) {
+        stopRefreshPolling();
+        setIsRefreshing(false);
+        return;
+      }
+
+      try {
+        const statusResponse = await fetch(buildApiUrl(statusEndpoint), {
+          headers: getAuthHeaders(),
+        });
+        if (!statusResponse.ok) {
+          throw new Error("Failed to fetch refresh status");
+        }
+        const statusData = await statusResponse.json();
+        const inProgress = statusData?.result?.inProgress ?? false;
+        if (!inProgress) {
+          stopRefreshPolling();
+          await fetchInstances(false, false);
+          setIsRefreshing(false);
+        }
+      } catch (error) {
+        console.error("Failed to poll RDS refresh status:", error);
+        stopRefreshPolling();
+        setIsRefreshing(false);
+      }
+    }, 5000);
+  }, [fetchInstances, stopRefreshPolling]);
+
+  const triggerBackgroundRefresh = useCallback(
+    async (showToast: boolean) => {
+      if (accounts.length === 0) {
+        return;
+      }
+      setIsRefreshing(true);
+      const refreshEndpoint = API_CONFIG.ENDPOINTS.AWS_RESOURCES.RDS_REFRESH;
+      try {
+        const refreshResponse = await fetch(buildApiUrl(refreshEndpoint), {
+          method: "POST",
+          headers: getAuthHeaders(),
+        });
+        if (!refreshResponse.ok) {
+          if (showToast) toast.error("Failed to refresh RDS instances");
+          setIsRefreshing(false);
+          return;
+        }
+        if (showToast) toast.success("RDS instances refreshed");
+        startRefreshPolling();
+      } catch (error) {
+        console.error("Failed to start RDS refresh:", error);
+        if (showToast) toast.error("Failed to refresh RDS instances");
+        setIsRefreshing(false);
+      }
+    },
+    [accounts.length, startRefreshPolling],
   );
 
   const handleRefresh = async () => {
-    setIsRefreshing(true);
-    await fetchInstances(true, true);
+    await triggerBackgroundRefresh(true);
   };
 
   useEffect(() => {
     fetchInstances();
-  }, [fetchInstances]);
+    triggerBackgroundRefresh(false);
+    return () => {
+      stopRefreshPolling();
+    };
+  }, [fetchInstances, stopRefreshPolling, triggerBackgroundRefresh]);
 
   // Filtered instances
   const filteredInstances = useMemo(() => {
@@ -822,7 +903,7 @@ export default function RDS() {
               <thead>
                 <tr className="border-b border-border bg-muted/30">
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    인스턴스
+                    인스턴스 ({filteredInstances.length})
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     엔진

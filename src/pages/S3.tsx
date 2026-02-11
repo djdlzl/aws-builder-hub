@@ -74,7 +74,11 @@ const formatRegionLabel = (region?: string) =>
 export default function S3() {
   const [buckets, setBuckets] = useState<S3Bucket[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
   const { accounts, selectedAccount } = useAWSContext();
+
+
+
 
   const getAuthHeaders = () => {
     const token = localStorage.getItem("access_token");
@@ -88,10 +92,10 @@ export default function S3() {
     const fetchBuckets = async () => {
       // Check for demo/mock admin
       const isDemoAdmin =
-        localStorage.getItem("cloudforge_auth_token") ===
+        localStorage.getItem("builderhub_auth_token") ===
         "mock-token-admin-demo";
       const isMockAdmin =
-        localStorage.getItem("cloudforge_auth_token") === "mock-token-admin";
+        localStorage.getItem("builderhub_auth_token") === "mock-token-admin";
 
       if (isDemoAdmin) {
         const dummyBuckets: S3Bucket[] = [
@@ -194,6 +198,21 @@ export default function S3() {
     };
     fetchBuckets();
   }, [accounts, selectedAccount]);
+
+  const filteredBuckets = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (query === "") {
+      return buckets;
+    }
+    return buckets.filter((bucket) => {
+      return (
+        bucket.name.toLowerCase().includes(query) ||
+        bucket.region.toLowerCase().includes(query) ||
+        (bucket.accountName ?? "").toLowerCase().includes(query) ||
+        bucket.createdAt.toLowerCase().includes(query)
+      );
+    });
+  }, [buckets, searchQuery]);
   const [createOpen, setCreateOpen] = useState(false);
   const [bucketName, setBucketName] = useState("");
   const [bucketRegion, setBucketRegion] = useState("");
@@ -596,24 +615,29 @@ export default function S3() {
         </TabsList>
 
         <TabsContent value="buckets" className="space-y-4">
+          <div className="text-sm font-semibold text-foreground">
+            버킷 목록 ({filteredBuckets.length})
+          </div>
           <div className="flex items-center gap-4">
             <div className="relative flex-1 max-w-sm">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="버킷 검색..."
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
                 className="pl-10 bg-secondary border-border"
               />
             </div>
           </div>
 
-          {buckets.length === 0 ? (
+          {filteredBuckets.length === 0 ? (
             <div className="rounded-xl border border-border bg-card p-12 text-center">
               <AlertCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
               <p className="text-muted-foreground">표시할 버킷이 없습니다.</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {buckets.map((bucket) => (
+              {filteredBuckets.map((bucket) => (
                 <div
                   key={bucket.name}
                   className="group relative overflow-hidden rounded-xl border border-border bg-card p-6 transition-all duration-300 hover:border-primary/50 hover:shadow-glow cursor-pointer"

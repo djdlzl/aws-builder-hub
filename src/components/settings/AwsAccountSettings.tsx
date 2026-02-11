@@ -80,10 +80,10 @@ export default function AwsAccountSettings() {
     try {
       // Check if admin_demo user is logged in
       const isDemoAdmin =
-        localStorage.getItem("cloudforge_auth_token") ===
+        localStorage.getItem("builderhub_auth_token") ===
         "mock-token-admin-demo";
       const isMockAdmin =
-        localStorage.getItem("cloudforge_auth_token") === "mock-token-admin";
+        localStorage.getItem("builderhub_auth_token") === "mock-token-admin";
 
       if (isDemoAdmin) {
         // Load dummy AWS accounts for admin_demo
@@ -92,7 +92,7 @@ export default function AwsAccountSettings() {
             id: 1,
             accountId: "123456789012",
             accountName: "Demo Production Account",
-            roleArn: "arn:aws:iam::123456789012:role/CloudForgeRole",
+            roleArn: "arn:aws:iam::123456789012:role/BuilderHubRole",
             externalId: "demo-external-id-123",
             description: "프로덕션 환경 AWS 계정",
             status: "VERIFIED",
@@ -104,7 +104,7 @@ export default function AwsAccountSettings() {
             id: 2,
             accountId: "210987654321",
             accountName: "Demo Development Account",
-            roleArn: "arn:aws:iam::210987654321:role/CloudForgeRole",
+            roleArn: "arn:aws:iam::210987654321:role/BuilderHubRole",
             externalId: "demo-external-id-456",
             description: "개발 환경 AWS 계정",
             status: "VERIFIED",
@@ -116,7 +116,7 @@ export default function AwsAccountSettings() {
             id: 3,
             accountId: "345678901234",
             accountName: "Demo Staging Account",
-            roleArn: "arn:aws:iam::345678901234:role/CloudForgeRole",
+            roleArn: "arn:aws:iam::345678901234:role/BuilderHubRole",
             externalId: "demo-external-id-789",
             description: "스테이징 환경 AWS 계정",
             status: "VERIFIED",
@@ -138,7 +138,7 @@ export default function AwsAccountSettings() {
             id: 1,
             accountId: "123456789012",
             accountName: "Production Account",
-            roleArn: "arn:aws:iam::123456789012:role/CloudForgeRole",
+            roleArn: "arn:aws:iam::123456789012:role/BuilderHubRole",
             externalId: "external-id-456",
             description: "프로덕션 환경 AWS 계정",
             status: "VERIFIED",
@@ -150,7 +150,7 @@ export default function AwsAccountSettings() {
             id: 2,
             accountId: "210987654321",
             accountName: "Development Account",
-            roleArn: "arn:aws:iam::210987654321:role/CloudForgeRole",
+            roleArn: "arn:aws:iam::210987654321:role/BuilderHubRole",
             externalId: "external-id-789",
             description: "개발 환경 AWS 계정",
             status: "VERIFIED",
@@ -191,9 +191,9 @@ export default function AwsAccountSettings() {
 
     // Check if demo or mock admin user is logged in
     const isDemoAdmin =
-      localStorage.getItem("cloudforge_auth_token") === "mock-token-admin-demo";
+      localStorage.getItem("builderhub_auth_token") === "mock-token-admin-demo";
     const isMockAdmin =
-      localStorage.getItem("cloudforge_auth_token") === "mock-token-admin";
+      localStorage.getItem("builderhub_auth_token") === "mock-token-admin";
 
     if (isDemoAdmin || isMockAdmin) {
       // Simulate account addition for demo/mock
@@ -256,9 +256,9 @@ export default function AwsAccountSettings() {
 
     // Check if demo or mock admin user is logged in
     const isDemoAdmin =
-      localStorage.getItem("cloudforge_auth_token") === "mock-token-admin-demo";
+      localStorage.getItem("builderhub_auth_token") === "mock-token-admin-demo";
     const isMockAdmin =
-      localStorage.getItem("cloudforge_auth_token") === "mock-token-admin";
+      localStorage.getItem("builderhub_auth_token") === "mock-token-admin";
 
     if (isDemoAdmin || isMockAdmin) {
       // Simulate verification for demo/mock
@@ -313,9 +313,9 @@ export default function AwsAccountSettings() {
 
     // Check if demo or mock admin user is logged in
     const isDemoAdmin =
-      localStorage.getItem("cloudforge_auth_token") === "mock-token-admin-demo";
+      localStorage.getItem("builderhub_auth_token") === "mock-token-admin-demo";
     const isMockAdmin =
-      localStorage.getItem("cloudforge_auth_token") === "mock-token-admin";
+      localStorage.getItem("builderhub_auth_token") === "mock-token-admin";
 
     if (isDemoAdmin || isMockAdmin) {
       // Simulate deletion for demo/mock
@@ -419,7 +419,7 @@ export default function AwsAccountSettings() {
             <Label htmlFor="roleArn">Role ARN *</Label>
             <Input
               id="roleArn"
-              placeholder="arn:aws:iam::123456789012:role/CloudForgeRole"
+              placeholder="arn:aws:iam::123456789012:role/BuilderHubRole"
               value={form.roleArn}
               onChange={(e) => setForm({ ...form, roleArn: e.target.value })}
               required

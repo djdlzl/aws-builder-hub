@@ -29,7 +29,7 @@ export default function Login() {
     if (result.success) {
       toast({
         title: "로그인 성공",
-        description: "CloudForge에 오신 것을 환영합니다.",
+        description: "Builder Hub에 오신 것을 환영합니다.",
       });
       navigate("/");
     } else {
@@ -49,7 +49,7 @@ export default function Login() {
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary/10 mb-4">
             <Cloud className="w-8 h-8 text-primary" />
           </div>
-          <h1 className="text-3xl font-bold text-foreground">CloudForge</h1>
+          <h1 className="text-3xl font-bold text-foreground">Builder Hub</h1>
           <p className="text-muted-foreground mt-2">AWS 리소스 관리 플랫폼</p>
         </div>
 
@@ -77,7 +77,7 @@ export default function Login() {
             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm0 18c-3.314 0-6-2.686-6-6s2.686-6 6-6 6 2.686 6 6-2.686 6-6 6z" />
             </svg>
-            Okta로 로그인
+            Okta 로그인
           </Button>
 
           <div className="relative mb-6">
