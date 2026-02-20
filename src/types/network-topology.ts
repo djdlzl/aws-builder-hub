@@ -89,8 +89,15 @@ export interface SubnetHierarchy {
   isPublic: boolean;
   tags?: Record<string, string>;
   name?: string;
+  displayName?: string;
   routeTableId?: string;
   routes?: RouteInfo[];
+  // 그룹핑 메타데이터 (RTB 동일 AZ 서브넷 통합 시)
+  isGrouped?: boolean;
+  subnetIds?: string[];
+  availabilityZones?: string[];
+  subnetCount?: number;
+  representativeCidr?: string;
 }
 
 export interface RouteInfo {

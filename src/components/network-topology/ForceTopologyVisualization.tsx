@@ -14,7 +14,11 @@ import React, {
   useMemo,
 } from "react";
 import * as d3 from "d3";
-import type { NetworkTopologyData, NodeData } from "@/types/network-topology";
+import type {
+  NetworkTopologyData,
+  NodeData,
+  RouteInfo,
+} from "@/types/network-topology";
 import { NodeType, ConnectionType } from "@/types/network-topology";
 import { ZoomIn, ZoomOut, Maximize2, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -101,11 +105,55 @@ const REGION_NAMES: Record<string, string> = {
   "eu-central-1": "프랑크푸르트(euc1)",
 };
 
+// ========================================
+// CIDR 유틸리티 함수
+// ========================================
+
+/**
+ * IP 주소를 32비트 숫자로 변환
+ * @param ip - IPv4 주소 (예: "10.40.3.0")
+ * @returns 32비트 정수
+ */
+function ipToNumber(ip: string): number {
+  return ip.split('.').reduce((acc, octet) => (acc << 8) + parseInt(octet, 10), 0);
+}
+
+/**
+ * targetCidr가 subnetCidr을 포함하는지 확인
+ * @param targetCidr - 목적지 CIDR (예: "10.40.3.0/24")
+ * @param subnetCidr - Subnet CIDR (예: "10.40.3.0/26" 또는 "10.40.3.0/24")
+ * @returns true if targetCidr contains or equals subnetCidr
+ */
+function cidrContainsSubnet(targetCidr: string, subnetCidr: string): boolean {
+  if (!targetCidr || !subnetCidr) return false;
+
+  const [targetBase, targetBits] = targetCidr.split('/');
+  const [subnetBase, subnetBits] = subnetCidr.split('/');
+
+  if (!targetBits || !subnetBits) return false;
+
+  const targetBitsNum = parseInt(targetBits, 10);
+  const subnetBitsNum = parseInt(subnetBits, 10);
+
+  // targetCidr이 더 큰 대역이어야 함 (비트 수가 작아야 함)
+  if (targetBitsNum > subnetBitsNum) return false;
+
+  const mask = -1 << (32 - targetBitsNum);
+  const targetNum = ipToNumber(targetBase) & mask;
+  const subnetNum = ipToNumber(subnetBase) & mask;
+
+  return targetNum === subnetNum;
+}
+
 // 태그에서 Name 추출 또는 CIDR 기반 표시명 생성
 function getTagName(
   metadata: Record<string, unknown>,
   fallbackId: string,
 ): string {
+  // 0. 백엔드에서 파싱된 displayName 최우선 (서브넷 그룹핑 처리 결과)
+  if (typeof metadata?.displayName === "string" && metadata.displayName)
+    return metadata.displayName;
+
   // 1. tags 객체에서 Name 찾기
   const tags = metadata?.tags as Record<string, string> | undefined;
   if (tags) {
@@ -190,6 +238,10 @@ export function ForceTopologyVisualization({
 
   // 그래프 데이터 생성
   const { nodes, links, vpcToSubnets, nodeConnections } = useMemo(() => {
+    console.log("🔍 [데이터 구조 확인] data prop:", data);
+    console.log("🔍 [데이터 구조 확인] data.hierarchy:", data?.hierarchy);
+    console.log("🔍 [데이터 구조 확인] accounts 개수:", Object.keys(data?.hierarchy?.accounts || {}).length);
+
     if (!data?.hierarchy?.accounts) {
       return {
         nodes: [],
@@ -340,6 +392,16 @@ export function ForceTopologyVisualization({
 
             // 서브넷 태그 추출 (다양한 가능성 고려)
             let subnetTags = subnetRecord.tags || subnet.tags;
+
+            // routes 필드 확인 로그
+            if (subIdx === 0) {
+              console.log(`🔍 [Subnet 데이터] 첫 번째 subnet 샘플 (${subnetId}):`, {
+                subnetRecord,
+                hasRoutes: !!subnetRecord.routes,
+                routesLength: Array.isArray(subnetRecord.routes) ? subnetRecord.routes.length : 0,
+                routes: subnetRecord.routes,
+              });
+            }
 
             const subnetMetadata = {
               accountId,
@@ -544,6 +606,139 @@ export function ForceTopologyVisualization({
         }
       }
     });
+
+    // ========================================
+    // Subnet RouteTable 기반 Peering 연결 정보 추가
+    // ========================================
+    console.log("🔍 [RTB Peering] 시작: RouteTable 기반 Peering 연결 처리");
+
+    // Subnet 노드 통계
+    const allSubnets = graphNodes.filter(n => n.type === NodeType.SUBNET);
+    const subnetsWithRoutes = allSubnets.filter(n => {
+      const routes = n.metadata.routes as RouteInfo[] | undefined;
+      return routes && routes.length > 0;
+    });
+    console.log(`🔍 [RTB Peering] 전체 Subnet 노드: ${allSubnets.length}개`);
+    console.log(`🔍 [RTB Peering] routes 필드 있는 Subnet: ${subnetsWithRoutes.length}개`);
+
+    if (subnetsWithRoutes.length > 0) {
+      const firstSubnetWithRoutes = subnetsWithRoutes[0];
+      console.log(`🔍 [RTB Peering] routes 있는 첫 Subnet 샘플:`, {
+        id: firstSubnetWithRoutes.id,
+        routeCount: (firstSubnetWithRoutes.metadata.routes as RouteInfo[]).length,
+        routes: firstSubnetWithRoutes.metadata.routes,
+      });
+    }
+
+    let rtbPeeringCount = 0;
+    let rtbRouteCount = 0;
+
+    graphNodes.forEach((sourceNode) => {
+      if (sourceNode.type !== NodeType.SUBNET) return;
+
+      const routes = sourceNode.metadata.routes as RouteInfo[] | undefined;
+      if (!routes || routes.length === 0) return;
+
+      routes.forEach((route) => {
+        // pcx-로 시작하는 Peering Connection만 처리
+        if (!route.target?.startsWith("pcx-")) return;
+        if (route.targetType !== "VPC_PEERING") return;
+        // ACTIVE 상태인 라우트만 처리 (BLACKHOLE은 비활성 연결)
+        if (route.state !== "ACTIVE") return;
+        if (!route.destinationCidr) return;
+
+        // 0.0.0.0/0는 IGW/NAT 라우팅이므로 제외
+        if (route.destinationCidr === "0.0.0.0/0") return;
+
+        rtbRouteCount++;
+        console.log(`🔍 [RTB Peering] Subnet ${sourceNode.id} routes 발견:`, {
+          destinationCidr: route.destinationCidr,
+          target: route.target,
+          targetType: route.targetType,
+          state: route.state,
+        });
+
+        // destinationCidr에 매칭되는 모든 Subnet/VPC 찾기
+        const targetNodes = graphNodes.filter((node) => {
+          if (node.type !== NodeType.SUBNET && node.type !== NodeType.VPC)
+            return false;
+
+          const cidrBlock = node.metadata.cidrBlock as string | undefined;
+          if (!cidrBlock) return false;
+
+          const matches = cidrContainsSubnet(route.destinationCidr!, cidrBlock);
+          if (matches) {
+            console.log(
+              `✅ [RTB Peering] CIDR 매칭 성공: ${route.destinationCidr} ⊇ ${cidrBlock} (${node.type} ${node.id})`,
+            );
+          }
+          return matches;
+        });
+
+        console.log(
+          `🔍 [RTB Peering] 매칭된 타겟 노드 ${targetNodes.length}개:`,
+          targetNodes.map((n) => ({ id: n.id, type: n.type })),
+        );
+
+        // VPC 레벨 연결 추가
+        const srcVpc = sourceNode.parentId;
+
+        targetNodes.forEach((targetNode) => {
+          const tgtVpc =
+            targetNode.type === NodeType.VPC
+              ? targetNode.id
+              : targetNode.parentId;
+
+          // 같은 VPC 내부 통신은 제외
+          if (!srcVpc || !tgtVpc || srcVpc === tgtVpc) {
+            console.log(
+              `⚠️ [RTB Peering] 같은 VPC 내부 통신 스킵: ${srcVpc} === ${tgtVpc}`,
+            );
+            return;
+          }
+
+          rtbPeeringCount++;
+          console.log(
+            `✅ [RTB Peering] VPC 연결 추가: ${srcVpc} ↔ ${tgtVpc}`,
+          );
+
+          // nodeConnections에 양방향 추가
+          if (!connections.has(srcVpc)) connections.set(srcVpc, new Set());
+          if (!connections.has(tgtVpc)) connections.set(tgtVpc, new Set());
+          connections.get(srcVpc)!.add(tgtVpc);
+          connections.get(tgtVpc)!.add(srcVpc);
+
+          // Subnet 레벨 연결도 추가 (서브넷 호버 시 사용)
+          if (!connections.has(sourceNode.id))
+            connections.set(sourceNode.id, new Set());
+          if (!connections.has(targetNode.id))
+            connections.set(targetNode.id, new Set());
+          connections.get(sourceNode.id)!.add(targetNode.id);
+          connections.get(targetNode.id)!.add(sourceNode.id);
+
+          // 피어링 링크 추가 (호버 시 시각적 표시용)
+          const peeringLinkId = `rtb-peering-${sourceNode.id}-${targetNode.id}`;
+          if (!graphLinks.some((l) => l.id === peeringLinkId)) {
+            graphLinks.push({
+              id: peeringLinkId,
+              source: sourceNode.id,
+              target: targetNode.id,
+              type: "peering",
+              connectionType: ConnectionType.VPC_PEERING,
+              isHidden: true,
+            });
+          }
+        });
+      });
+    });
+
+    console.log(
+      `🔍 [RTB Peering] 완료: ${rtbRouteCount}개 pcx 라우트 처리, ${rtbPeeringCount}개 VPC 연결 추가`,
+    );
+    console.log(
+      `🔍 [RTB Peering] 최종 nodeConnections:`,
+      Array.from(connections.entries()).map(([k, v]) => [k, Array.from(v)]),
+    );
 
     return {
       nodes: graphNodes,
@@ -912,10 +1107,11 @@ export function ForceTopologyVisualization({
         )
         .append("text")
         .attr("class", "subnet-count")
+        .attr("x", (d) => d.displayName.length * 4.5 / 2 + 4)
         .attr("y", NODE_SIZES[NodeType.VPC] + 10)
-        .attr("text-anchor", "middle")
+        .attr("text-anchor", "start")
         .style("font-size", "8px")
-        .style("fill", "#666")
+        .style("fill", "#888")
         .style("pointer-events", "none")
         .text((d) => `(${vpcToSubnets.get(d.id)?.length || 0})`);
 
@@ -929,6 +1125,22 @@ export function ForceTopologyVisualization({
         .style("fill", "#333")
         .style("pointer-events", "none")
         .text((d) => d.displayName);
+
+      // 통합 서브넷 배지 (AZ 개수 표시)
+      nodeElements
+        .filter(
+          (d) => d.type === NodeType.SUBNET && d.metadata.isGrouped === true,
+        )
+        .append("text")
+        .attr("class", "az-badge")
+        .attr("x", NODE_SIZES[NodeType.SUBNET] + 1)
+        .attr("y", -NODE_SIZES[NodeType.SUBNET] + 5)
+        .attr("text-anchor", "start")
+        .style("font-size", "7px")
+        .style("fill", "#6366f1")
+        .style("font-weight", "bold")
+        .style("pointer-events", "none")
+        .text((d) => `${d.metadata.subnetCount}AZ`);
 
       // 이벤트 핸들러
       nodeElements
@@ -1054,8 +1266,13 @@ export function ForceTopologyVisualization({
       // 활성 노드 정보 찾기
       const hoveredNode = nodes.find((n) => n.id === activeHighlightId);
 
+      console.log(
+        `🎯 [Highlight] 호버 노드: ${activeHighlightId} (${hoveredNode?.type})`,
+      );
+
       // VPC Peering/CloudWAN으로 연결된 전체 네트워크 탐색 (BFS)
       const findConnectedNetwork = (startVpcId: string): Set<string> => {
+        console.log(`🔍 [BFS] 시작 VPC: ${startVpcId}`);
         const visited = new Set<string>();
         const queue = [startVpcId];
 
@@ -1066,14 +1283,25 @@ export function ForceTopologyVisualization({
 
           // VPC Peering/CloudWAN 연결 탐색
           const peeringConnections = nodeConnections.get(currentId);
+          console.log(
+            `🔍 [BFS] ${currentId} 연결:`,
+            peeringConnections
+              ? Array.from(peeringConnections)
+              : "연결 없음",
+          );
           if (peeringConnections) {
             peeringConnections.forEach((connectedId) => {
               if (!visited.has(connectedId)) {
+                console.log(`  ➡️ [BFS] 큐에 추가: ${connectedId}`);
                 queue.push(connectedId);
               }
             });
           }
         }
+        console.log(
+          `✅ [BFS] 완료. 방문한 노드 ${visited.size}개:`,
+          Array.from(visited),
+        );
         return visited;
       };
 
@@ -1128,7 +1356,12 @@ export function ForceTopologyVisualization({
 
         // VPC 또는 서브넷 호버 시: 연결된 전체 VPC 네트워크 탐색
         if (targetVpcId) {
+          console.log(`🎯 [Highlight] VPC/Subnet 호버, targetVpcId: ${targetVpcId}`);
           const connectedVpcs = findConnectedNetwork(targetVpcId);
+          console.log(
+            `✅ [Highlight] 연결된 VPC ${connectedVpcs.size}개:`,
+            Array.from(connectedVpcs),
+          );
 
           connectedVpcs.forEach((vpcId) => {
             connectedNodeIds.add(vpcId);
@@ -1152,6 +1385,11 @@ export function ForceTopologyVisualization({
         }
       }
     }
+
+    console.log(
+      `🎨 [Highlight] 최종 하이라이트될 노드 ${connectedNodeIds.size}개:`,
+      Array.from(connectedNodeIds),
+    );
 
     // 노드 하이라이트 업데이트
     nodeGroup.selectAll(".node").each(function () {
