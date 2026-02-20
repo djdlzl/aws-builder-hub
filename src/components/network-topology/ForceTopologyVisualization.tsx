@@ -19,7 +19,7 @@ import type {
   NodeData,
   RouteInfo,
 } from "@/types/network-topology";
-import { NodeType, ConnectionType } from "@/types/network-topology";
+import { NodeType, ConnectionType, SubnetHierarchy } from "@/types/network-topology";
 import { ZoomIn, ZoomOut, Maximize2, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -413,8 +413,14 @@ export function ForceTopologyVisualization({
               isPublic: subnet.isPublic,
               tags: subnetTags,
               name: subnetRecord.name || subnet.name,
+              displayName: subnetRecord.displayName ?? (subnet as SubnetHierarchy).displayName,
               routeTableId: subnetRecord.routeTableId,
               routes: subnetRecord.routes,
+              isGrouped: subnetRecord.isGrouped ?? (subnet as SubnetHierarchy).isGrouped ?? false,
+              subnetIds: subnetRecord.subnetIds ?? (subnet as SubnetHierarchy).subnetIds ?? [subnetId],
+              availabilityZones: subnetRecord.availabilityZones ?? (subnet as SubnetHierarchy).availabilityZones ?? [subnet.availabilityZone],
+              subnetCount: subnetRecord.subnetCount ?? (subnet as SubnetHierarchy).subnetCount ?? 1,
+              representativeCidr: subnetRecord.representativeCidr ?? (subnet as SubnetHierarchy).representativeCidr ?? subnet.cidrBlock,
             };
 
             const subAngle = subnetStart + subIdx * subnetStep;
@@ -456,11 +462,12 @@ export function ForceTopologyVisualization({
     });
 
     // VPC 피어링/CloudWAN 연결 정보
-    // edge의 source/target은 "vpc:vpc-xxx" 또는 "subnet:subnet-xxx" 형식이므로 접두사 제거
+    // edge의 source/target은 "vpc:vpc-xxx", "subnet-xxx", "grp-subnet-xxx" 형식
+    // "vpc:" 접두사만 제거하고, subnet 관련 ID는 그대로 사용 (groupId 호환)
     const extractNodeId = (edgeId: string): string => {
       if (edgeId.startsWith("vpc:")) return edgeId.substring(4);
-      if (edgeId.startsWith("subnet:")) return edgeId.substring(7);
       if (edgeId.startsWith("gateway:")) return edgeId.substring(8);
+      // subnet ID는 그대로 사용 (grp-subnet-xxx, subnet-xxx 모두 처리)
       return edgeId;
     };
 
