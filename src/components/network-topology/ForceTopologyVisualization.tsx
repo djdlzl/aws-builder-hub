@@ -634,11 +634,27 @@ export function ForceTopologyVisualization({
 
     if (subnetsWithRoutes.length > 0) {
       const firstSubnetWithRoutes = subnetsWithRoutes[0];
+      const firstRoutes = firstSubnetWithRoutes.metadata.routes as RouteInfo[];
       console.log(`🔍 [RTB Peering] routes 있는 첫 Subnet 샘플:`, {
         id: firstSubnetWithRoutes.id,
-        routeCount: (firstSubnetWithRoutes.metadata.routes as RouteInfo[]).length,
-        routes: firstSubnetWithRoutes.metadata.routes,
+        routeCount: firstRoutes.length,
+        routes: JSON.stringify(firstRoutes), // 실제 값 출력
       });
+
+      // VPC_PEERING 타입 라우트 전체 탐색 (state 무관)
+      const allVpcPeeringRoutes: Array<{subnetId: string; route: RouteInfo}> = [];
+      subnetsWithRoutes.forEach(n => {
+        const routes = n.metadata.routes as RouteInfo[];
+        routes.forEach(r => {
+          if (r.targetType === "VPC_PEERING" || r.target?.startsWith("pcx-")) {
+            allVpcPeeringRoutes.push({ subnetId: n.id, route: r });
+          }
+        });
+      });
+      console.log(`🔍 [RTB Peering] 전체 VPC_PEERING 라우트 (state 무관):`, allVpcPeeringRoutes.length, "개");
+      if (allVpcPeeringRoutes.length > 0) {
+        console.log(`🔍 [RTB Peering] VPC_PEERING 라우트 샘플:`, JSON.stringify(allVpcPeeringRoutes.slice(0, 3)));
+      }
     }
 
     let rtbPeeringCount = 0;
@@ -654,8 +670,8 @@ export function ForceTopologyVisualization({
         // pcx-로 시작하는 Peering Connection만 처리
         if (!route.target?.startsWith("pcx-")) return;
         if (route.targetType !== "VPC_PEERING") return;
-        // ACTIVE 상태인 라우트만 처리 (BLACKHOLE은 비활성 연결)
-        if (route.state !== "ACTIVE") return;
+        // NOTE: state 조건 제거 - 백엔드 버그로 인해 BLACKHOLE로 잘못 저장된 데이터도 처리
+        // (백엔드 route state 버그 수정 + 재수집 후 복원 예정)
         if (!route.destinationCidr) return;
 
         // 0.0.0.0/0는 IGW/NAT 라우팅이므로 제외
