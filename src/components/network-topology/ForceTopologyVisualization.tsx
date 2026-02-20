@@ -464,6 +464,10 @@ export function ForceTopologyVisualization({
     // VPC 피어링/CloudWAN 연결 정보
     // edge의 source/target은 "vpc:vpc-xxx", "subnet-xxx", "grp-subnet-xxx" 형식
     // "vpc:" 접두사만 제거하고, subnet 관련 ID는 그대로 사용 (groupId 호환)
+    console.log("🔍 [Edges 전체]", data.edges?.length, "개");
+    const peeringEdges = data.edges?.filter(e => e.type === ConnectionType.VPC_PEERING || e.type === ConnectionType.CLOUDWAN) ?? [];
+    console.log("🔍 [Edges VPC_PEERING/CLOUDWAN]", peeringEdges.length, "개:", peeringEdges.map(e => `${e.type}: ${e.source} → ${e.target}`));
+
     const extractNodeId = (edgeId: string): string => {
       if (edgeId.startsWith("vpc:")) return edgeId.substring(4);
       if (edgeId.startsWith("gateway:")) return edgeId.substring(8);
