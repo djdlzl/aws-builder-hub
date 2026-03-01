@@ -7,6 +7,7 @@ import { API_CONFIG, buildApiUrl, buildWsUrl } from "../../config/api";
 
 interface SSMTerminalProps {
   instanceId: string;
+  accountId: string;
   instanceName: string;
   onClose?: () => void;
 }
@@ -20,6 +21,7 @@ interface SsmSessionResponse {
 
 export function SSMTerminal({
   instanceId,
+  accountId,
   instanceName,
   onClose,
 }: SSMTerminalProps) {
@@ -200,7 +202,7 @@ export function SSMTerminal({
     };
     window.addEventListener("resize", handleResize);
 
-    connectToSSM(term, instanceId, instanceName);
+    connectToSSM(term, instanceId, accountId, instanceName);
 
     return () => {
       window.removeEventListener("resize", handleResize);
@@ -208,11 +210,12 @@ export function SSMTerminal({
       term.dispose();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [instanceId, instanceName]);
+  }, [instanceId, accountId, instanceName]);
 
   const connectToSSM = async (
     term: Terminal,
     instId: string,
+    accId: string,
     instName: string
   ) => {
     term.writeln(
@@ -246,7 +249,7 @@ export function SSMTerminal({
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ instanceId: instId }),
+          body: JSON.stringify({ instanceId: instId, accountId: accId }),
         }
       );
 

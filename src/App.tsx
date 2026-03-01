@@ -19,6 +19,7 @@ import Templates from "./pages/Templates";
 import Settings from "./pages/Settings";
 import Login from "./pages/Login";
 import AWSAccounts from "./pages/AWSAccounts";
+import EksUpgrade from "./pages/EksUpgrade";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -120,6 +121,16 @@ const App = () => (
                     <ProtectedRoute>
                       <MainLayout>
                         <Settings />
+                      </MainLayout>
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/eks-upgrade"
+                  element={
+                    <ProtectedRoute requiredRole="admin">
+                      <MainLayout>
+                        <EksUpgrade />
                       </MainLayout>
                     </ProtectedRoute>
                   }

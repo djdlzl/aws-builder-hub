@@ -4,6 +4,7 @@ import { Moon, Sun, Monitor } from "lucide-react";
 import { useTheme } from "@/hooks/use-theme";
 import { cn } from "@/lib/utils";
 import SsoSettings from "@/components/settings/SsoSettings";
+import NavPreferencesSettings from "@/components/settings/NavPreferencesSettings";
 import { useAuth } from "@/hooks/use-auth";
 
 export default function Settings() {
@@ -18,7 +19,7 @@ export default function Settings() {
   ];
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6 animate-fade-in max-w-2xl mx-auto">
       <div>
         <h1 className="text-3xl font-bold text-foreground">설정</h1>
         <p className="text-muted-foreground mt-1">앱 설정을 관리합니다</p>
@@ -50,6 +51,10 @@ export default function Settings() {
             </div>
           </div>
         </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-card p-6">
+        <NavPreferencesSettings />
       </div>
 
       {isAdmin && (

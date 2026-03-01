@@ -2,52 +2,19 @@ import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
+import { useNavPreferences } from "@/hooks/use-nav-preferences";
 import {
   getShutdownSchedule,
   type ShutdownSchedule,
 } from "@/lib/api/maintenance";
 import {
-  LayoutDashboard,
-  Server,
-  Database,
-  Globe,
-  Shield,
-  Tags,
   Settings,
   ChevronLeft,
   ChevronRight,
   Box,
-  Layers,
-  Building2,
   LogOut,
   Clock,
-  Network,
 } from "lucide-react";
-
-interface NavItem {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  path: string;
-  adminOnly?: boolean;
-}
-
-const navItems: NavItem[] = [
-  { icon: LayoutDashboard, label: "대시보드", path: "/" },
-  { icon: Server, label: "EC2 인스턴스", path: "/ec2" },
-  { icon: Database, label: "RDS 데이터베이스", path: "/rds" },
-  { icon: Layers, label: "S3 버킷", path: "/s3" },
-  { icon: Globe, label: "VPC 네트워크", path: "/vpc" },
-  { icon: Network, label: "네트워크 토폴로지", path: "/network-topology", adminOnly: true },
-  { icon: Shield, label: "IAM 정책", path: "/iam" },
-  { icon: Tags, label: "모듈 관리", path: "/modules" },
-  { icon: Box, label: "템플릿", path: "/templates" },
-  {
-    icon: Building2,
-    label: "Admin 설정",
-    path: "/admin-settings",
-    adminOnly: true,
-  },
-];
 
 export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
@@ -55,10 +22,9 @@ export function Sidebar() {
     useState<ShutdownSchedule | null>(null);
   const location = useLocation();
   const { user, isAdmin, logout } = useAuth();
+  const { getVisibleNavItems } = useNavPreferences();
 
-  const filteredNavItems = navItems.filter(
-    (item) => !item.adminOnly || isAdmin
-  );
+  const filteredNavItems = getVisibleNavItems(isAdmin);
 
   useEffect(() => {
     const fetchShutdownSchedule = async () => {

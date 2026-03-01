@@ -11,6 +11,7 @@ interface TerminalDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   instanceId: string;
+  accountId: string;
   instanceName: string;
 }
 
@@ -18,6 +19,7 @@ export function TerminalDialog({
   open,
   onOpenChange,
   instanceId,
+  accountId,
   instanceName,
 }: TerminalDialogProps) {
   return (
@@ -32,6 +34,7 @@ export function TerminalDialog({
         <div className="flex-1 h-[calc(600px-60px)]">
           <SSMTerminal
             instanceId={instanceId}
+            accountId={accountId}
             instanceName={instanceName}
             onClose={() => onOpenChange(false)}
           />

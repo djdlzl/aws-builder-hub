@@ -61,14 +61,30 @@ const NODE_COLORS: Record<NodeType, { fill: string; stroke: string }> = {
   [NodeType.NAT]: { fill: "#fce4ec", stroke: "#ec407a" },
 };
 
-// 노드 크기 (50% 축소)
+// 노드 크기
 const NODE_SIZES: Record<NodeType, number> = {
-  [NodeType.ACCOUNT]: 15,
-  [NodeType.REGION]: 13,
-  [NodeType.VPC]: 12,
-  [NodeType.SUBNET]: 10,
-  [NodeType.IGW]: 9,
-  [NodeType.NAT]: 9,
+  [NodeType.ACCOUNT]: 22,
+  [NodeType.REGION]: 19,
+  [NodeType.VPC]: 18,
+  [NodeType.SUBNET]: 15,
+  [NodeType.IGW]: 13,
+  [NodeType.NAT]: 13,
+};
+
+// 노드 타입별 SVG path 아이콘 (Material Design Icons 24x24 viewBox 기준)
+const NODE_ICONS: Record<NodeType, string> = {
+  // Building/Office 아이콘 (ACCOUNT)
+  [NodeType.ACCOUNT]: "M12 7V3H2v18h20V7H12zM6 19H4v-2h2v2zm0-4H4v-2h2v2zm0-4H4V9h2v2zm0-4H4V5h2v2zm4 12H8v-2h2v2zm0-4H8v-2h2v2zm0-4H8V9h2v2zm0-4H8V5h2v2zm10 12h-8v-2h2v-2h-2v-2h2v-2h-2V9h8v10zm-2-8h-2v2h2v-2zm0 4h-2v2h2v-2z",
+  // MapPin 아이콘 (REGION)
+  [NodeType.REGION]: "M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z",
+  // Layers 아이콘 (VPC)
+  [NodeType.VPC]: "M11.99 18.54l-7.37-5.73L3 14.07l9 7 9-7-1.63-1.27-7.38 5.74zM12 16l7.36-5.73L21 9l-9-7-9 7 1.63 1.27L12 16z",
+  // Grid/Table 아이콘 (SUBNET)
+  [NodeType.SUBNET]: "M20 2H4c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-9 17H4v-3h7v3zm0-5H4v-3h7v3zm0-5H4V6h7v3zm9 10h-7v-3h7v3zm0-5h-7v-3h7v3zm0-5h-7V6h7v3z",
+  // Globe/Language 아이콘 (IGW)
+  [NodeType.IGW]: "M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zm6.93 6h-2.95c-.32-1.25-.78-2.45-1.38-3.56 1.84.63 3.37 1.9 4.33 3.56zM12 4.04c.83 1.2 1.48 2.53 1.91 3.96h-3.82c.43-1.43 1.08-2.76 1.91-3.96zM4.26 14C4.1 13.36 4 12.69 4 12s.1-1.36.26-2h3.38c-.08.66-.14 1.32-.14 2 0 .68.06 1.34.14 2H4.26zm.82 2h2.95c.32 1.25.78 2.45 1.38 3.56-1.84-.63-3.37-1.9-4.33-3.56zm2.95-8H5.08c.96-1.66 2.49-2.93 4.33-3.56C8.81 5.55 8.35 6.75 8.03 8zM12 19.96c-.83-1.2-1.48-2.53-1.91-3.96h3.82c-.43 1.43-1.08 2.76-1.91 3.96zM14.34 14H9.66c-.09-.66-.16-1.32-.16-2 0-.68.07-1.35.16-2h4.68c.09.65.16 1.32.16 2 0 .68-.07 1.34-.16 2zm.25 5.56c.6-1.11 1.06-2.31 1.38-3.56h2.95c-.96 1.66-2.49 2.93-4.33 3.56zM16.36 14c.08-.66.14-1.32.14-2 0-.68-.06-1.34-.14-2h3.38c.16.64.26 1.31.26 2s-.1 1.36-.26 2h-3.38z",
+  // SwapHoriz/Arrow 아이콘 (NAT)
+  [NodeType.NAT]: "M6.99 11L3 15l3.99 4v-3H14v-2H6.99v-3zM21 9l-3.99-4v3H10v2h7.01v3L21 9z",
 };
 
 // 연결선 색상
@@ -230,11 +246,24 @@ export function ForceTopologyVisualization({
   // 줌/팬 상태가 아닐 때만 시뮬레이션이 중앙을 유지하도록 함
   const isDraggingRef = useRef(false);
 
+  // VPC 펼침 시 기존 노드 위치 고정을 위한 추적 (이전 렌더에서 보였던 노드 ID)
+  const wasVisibleRef = useRef<Set<string>>(new Set());
+  // 사용자가 드래그로 고정한 노드 ID 집합
+  const userPinnedNodesRef = useRef<Set<string>>(new Set());
+
   const [dimensions, setDimensions] = useState({ width: 1200, height: 800 });
   const [expandedVpcs, setExpandedVpcs] = useState<Set<string>>(new Set());
   const [selectedSubnet, setSelectedSubnet] = useState<string | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [pinnedNodeId, setPinnedNodeId] = useState<string | null>(null);
+  const [tooltip, setTooltip] = useState<{
+    visible: boolean;
+    x: number;
+    y: number;
+    node: GraphNode | null;
+  } | null>(null);
+  const [showPeeringLinks, setShowPeeringLinks] = useState(true);
+  const [showLegend, setShowLegend] = useState(false);
 
   // 그래프 데이터 생성
   const { nodes, links, vpcToSubnets, nodeConnections } = useMemo(() => {
@@ -279,8 +308,9 @@ export function ForceTopologyVisualization({
         metadata: { accountId },
         level: 0,
         isVisible: true,
-        x: prevPos?.x ?? centerX,
-        y: prevPos?.y ?? centerY,
+        // 초기 위치: 계정이 여러 개면 원형으로 배치, 하나면 중앙
+        x: prevPos?.x ?? (accounts.length > 1 ? centerX + Math.cos(accAngle) * 250 : centerX),
+        y: prevPos?.y ?? (accounts.length > 1 ? centerY + Math.sin(accAngle) * 250 : centerY),
         vx: prevPos?.vx,
         vy: prevPos?.vy,
       });
@@ -507,21 +537,24 @@ export function ForceTopologyVisualization({
           const sourceVpcId = getParentVpcId(sourceNode);
           const targetVpcId = getParentVpcId(targetNode);
 
-          // VPC 레벨 연결 정보 저장 (서로 다른 VPC인 경우에만)
-          if (sourceVpcId && targetVpcId && sourceVpcId !== targetVpcId) {
-            if (!connections.has(sourceVpcId))
-              connections.set(sourceVpcId, new Set());
-            if (!connections.has(targetVpcId))
-              connections.set(targetVpcId, new Set());
-            connections.get(sourceVpcId)!.add(targetVpcId);
-            connections.get(targetVpcId)!.add(sourceVpcId);
+          // VPC_PEERING: nodeConnections에는 추가하지 않음
+          // 하이라이트 연결은 하단 RTB 기반 pcx- 라우트 처리에서만 담당
+          // (data.edges는 백엔드 버그로 잘못된 피어링이 포함될 수 있어 신뢰하지 않음)
+          // CLOUDWAN: RTB 검증 불가능하므로 data.edges 신뢰
+          if (edge.type === ConnectionType.CLOUDWAN) {
+            if (sourceVpcId && targetVpcId && sourceVpcId !== targetVpcId) {
+              if (!connections.has(sourceVpcId))
+                connections.set(sourceVpcId, new Set());
+              if (!connections.has(targetVpcId))
+                connections.set(targetVpcId, new Set());
+              connections.get(sourceVpcId)!.add(targetVpcId);
+              connections.get(targetVpcId)!.add(sourceVpcId);
+            }
+            if (!connections.has(sourceId)) connections.set(sourceId, new Set());
+            if (!connections.has(targetId)) connections.set(targetId, new Set());
+            connections.get(sourceId)!.add(targetId);
+            connections.get(targetId)!.add(sourceId);
           }
-
-          // 서브넷 레벨 연결 정보도 저장 (서브넷 호버 시 사용)
-          if (!connections.has(sourceId)) connections.set(sourceId, new Set());
-          if (!connections.has(targetId)) connections.set(targetId, new Set());
-          connections.get(sourceId)!.add(targetId);
-          connections.get(targetId)!.add(sourceId);
 
           // 계정 간 네트워크 연결 링크 추가 (회색 실선)
           const getAccountId = (node: GraphNode): string | null => {
@@ -570,7 +603,8 @@ export function ForceTopologyVisualization({
       }
     });
 
-    // ROUTE/GATEWAY/TRANSIT_GATEWAY 엣지 소비
+    // ROUTE/GATEWAY/TRANSIT_GATEWAY 엣지: 시각적 링크만 추가
+    // nodeConnections에는 추가하지 않음 (TGW/VPC endpoint로 인한 전체 망 하이라이트 방지)
     data.edges?.forEach((edge) => {
       if (
         edge.type === ConnectionType.ROUTE ||
@@ -580,32 +614,9 @@ export function ForceTopologyVisualization({
         const sourceId = extractNodeId(edge.source);
         const targetId = extractNodeId(edge.target);
 
-        // nodeConnections에 연결 정보 추가
-        if (!connections.has(sourceId)) connections.set(sourceId, new Set());
-        if (!connections.has(targetId)) connections.set(targetId, new Set());
-        connections.get(sourceId)!.add(targetId);
-        connections.get(targetId)!.add(sourceId);
-
-        // ROUTE/GATEWAY의 경우 VPC 레벨 연결 정보도 추가
         const sourceNode = graphNodes.find((n) => n.id === sourceId);
         const targetNode = graphNodes.find((n) => n.id === targetId);
         if (sourceNode && targetNode) {
-          const srcVpc =
-            sourceNode.type === NodeType.VPC
-              ? sourceNode.id
-              : sourceNode.parentId;
-          const tgtVpc =
-            targetNode.type === NodeType.VPC
-              ? targetNode.id
-              : targetNode.parentId;
-          if (srcVpc && tgtVpc && srcVpc !== tgtVpc) {
-            if (!connections.has(srcVpc)) connections.set(srcVpc, new Set());
-            if (!connections.has(tgtVpc)) connections.set(tgtVpc, new Set());
-            connections.get(srcVpc)!.add(tgtVpc);
-            connections.get(tgtVpc)!.add(srcVpc);
-          }
-
-          // 피어링 링크 추가 (호버 시 시각적 표시용)
           graphLinks.push({
             id: `route-${sourceId}-${targetId}`,
             source: sourceId,
@@ -887,10 +898,19 @@ export function ForceTopologyVisualization({
       // 이전 줌 상태 복원
       svg.call(zoom.transform, zoomTransformRef.current);
 
-      // 빈 공간 클릭 시 고정 해제
+      // 빈 공간 클릭 시 하이라이트 고정 해제 + 드래그 고정 해제
       svg.on("click", (event) => {
         if (event.target === svgRef.current) {
           setPinnedNodeId(null);
+          // 사용자가 고정한 노드 핀 전부 해제
+          userPinnedNodesRef.current.clear();
+          if (simulationRef.current) {
+            simulationRef.current.nodes().forEach((node) => {
+              node.fx = null;
+              node.fy = null;
+            });
+            simulationRef.current.alpha(0.2).restart();
+          }
         }
       });
 
@@ -943,62 +963,101 @@ export function ForceTopologyVisualization({
         .attr("d", "M0,-5L10,0L0,5")
         .attr("fill", HIGHLIGHT_COLOR);
 
-      // 노드 초기 위치 저장 (움직임 제한용)
-      const nodeHomePositions = new Map<string, { x: number; y: number }>();
-      visibleNodes.forEach((node) => {
-        nodeHomePositions.set(node.id, { x: node.x!, y: node.y! });
+      // ── 계정별 중심점 계산 (계정 수에 따라 화면 분할) ──
+      const accountNodes = visibleNodes.filter((n) => n.type === NodeType.ACCOUNT);
+      const numAccounts = accountNodes.length;
+      const accountCenterMap = new Map<string, { cx: number; cy: number }>();
+
+      accountNodes.forEach((accNode, i) => {
+        let cx: number, cy: number;
+        if (numAccounts <= 1) {
+          cx = width / 2;
+          cy = height / 2;
+        } else {
+          const angle = (i / numAccounts) * 2 * Math.PI - Math.PI / 2;
+          const r = Math.min(width, height) * 0.28;
+          cx = width / 2 + Math.cos(angle) * r;
+          cy = height / 2 + Math.sin(angle) * r;
+        }
+        accountCenterMap.set(accNode.id, { cx, cy });
       });
 
-      // 움직임 제한 범위 (px) - 충돌 해소를 위해 충분히 크게
-      const MAX_MOVEMENT = 80;
+      // 각 노드가 속한 계정 ID 맵 (forceX/forceY 에서 사용)
+      const nodeAccountMap = new Map<string, string>();
+      visibleNodes.forEach((node) => {
+        if (node.type === NodeType.ACCOUNT) {
+          nodeAccountMap.set(node.id, node.id);
+        } else {
+          const accId = node.metadata.accountId as string | undefined;
+          if (accId) nodeAccountMap.set(node.id, accId);
+          else if (node.parentId) {
+            // REGION 등 accountId가 parentId인 경우
+            nodeAccountMap.set(node.id, node.parentId);
+          }
+        }
+      });
+
+      // ── VPC 펼침 시 기존 노드 위치 고정 (새 서브넷만 자유롭게 이동) ──
+      // wasVisibleRef.current 는 직전 렌더에서 보였던 노드 ID 집합
+      const prevVisibleIds = wasVisibleRef.current;
+      visibleNodes.forEach((node) => {
+        if (prevVisibleIds.has(node.id)) {
+          // 기존에 보였던 노드: 현재 위치에 고정 (fx/fy)
+          node.fx = node.x;
+          node.fy = node.y;
+        }
+        // 새로 추가된 서브넷은 fx/fy 없이 자유롭게 배치
+      });
+
+      // 이번 렌더에서 보이는 노드 목록 업데이트
+      wasVisibleRef.current = new Set(visibleNodes.map((n) => n.id));
+
+      // 일정 시간 후 기존 노드 잠금 해제 (새 서브넷이 자리 잡은 뒤)
+      const unlockTimeout = setTimeout(() => {
+        visibleNodes.forEach((node) => {
+          if (!userPinnedNodesRef.current.has(node.id)) {
+            node.fx = null;
+            node.fy = null;
+          }
+        });
+      }, 700);
 
       // Force simulation 설정
       const simulation = d3
         .forceSimulation<GraphNode>(visibleNodes)
-        .alphaDecay(0.15) // 더 빨리 안정화
-        .velocityDecay(0.6) // 속도 감쇠 증가로 흔들림 감소
+        .alphaDecay(0.12)      // 적당히 빠른 수렴
+        .velocityDecay(0.75)   // 높은 마찰 → 진동/굴러다님 억제
         .force(
           "link",
           d3
             .forceLink<GraphNode, GraphLink>(visibleLinks)
             .id((d) => d.id)
             .distance((d) => {
-              if (d.type === "peering") return 80;
+              if (d.type === "peering") return 100;
 
-              // 계층별 거리 설정 (노드 크기 축소에 맞춰 조정)
               const source = d.source as GraphNode;
               const target = d.target as GraphNode;
-
-              const sourceType =
-                typeof source === "object" ? source.type : NodeType.ACCOUNT;
-              const targetType =
-                typeof target === "object" ? target.type : NodeType.VPC;
+              const sourceType = typeof source === "object" ? source.type : NodeType.ACCOUNT;
+              const targetType = typeof target === "object" ? target.type : NodeType.VPC;
 
               if (
-                (sourceType === NodeType.ACCOUNT &&
-                  targetType === NodeType.REGION) ||
-                (targetType === NodeType.ACCOUNT &&
-                  sourceType === NodeType.REGION)
-              )
-                return 160;
+                (sourceType === NodeType.ACCOUNT && targetType === NodeType.REGION) ||
+                (targetType === NodeType.ACCOUNT && sourceType === NodeType.REGION)
+              ) return 160;
               if (
-                (sourceType === NodeType.REGION &&
-                  targetType === NodeType.VPC) ||
+                (sourceType === NodeType.REGION && targetType === NodeType.VPC) ||
                 (targetType === NodeType.REGION && sourceType === NodeType.VPC)
-              )
-                return 120;
+              ) return 130;
               if (
-                (sourceType === NodeType.VPC &&
-                  targetType === NodeType.SUBNET) ||
+                (sourceType === NodeType.VPC && targetType === NodeType.SUBNET) ||
                 (targetType === NodeType.VPC && sourceType === NodeType.SUBNET)
-              )
-                return 100;
+              ) return 100;
 
-              return 80;
+              return 90;
             })
             .strength((d) => {
-              if (d.type === "peering") return 0.1;
-              return 0.3;
+              if (d.type === "peering") return 0.05; // 피어링은 느슨하게
+              return 0.4;
             }),
         )
         .force(
@@ -1009,36 +1068,41 @@ export function ForceTopologyVisualization({
               width / 2,
               height / 2,
             )
-            .strength(0.9), // 방사형 구조 더 강하게
+            // 계정 노드는 radial 제외 (accountX/Y force가 담당)
+            .strength((d: GraphNode) => d.type === NodeType.ACCOUNT ? 0 : 0.25),
         )
-        .force("charge", d3.forceManyBody().strength(-250)) // 반발력 더 증가
+        // 계정별 X 클러스터링 (계정끼리 분리)
+        // 계정 노드 자체는 강하게(0.5), 하위 노드(리전/VPC)는 약하게(0.12) 당김
+        .force(
+          "accountX",
+          d3.forceX<GraphNode>((d) => {
+            const accId = nodeAccountMap.get(d.id);
+            return accId ? (accountCenterMap.get(accId)?.cx ?? width / 2) : width / 2;
+          }).strength((d: GraphNode) => {
+            if (numAccounts <= 1) return 0;
+            return d.type === NodeType.ACCOUNT ? 0.5 : 0.12;
+          }),
+        )
+        // 계정별 Y 클러스터링
+        .force(
+          "accountY",
+          d3.forceY<GraphNode>((d) => {
+            const accId = nodeAccountMap.get(d.id);
+            return accId ? (accountCenterMap.get(accId)?.cy ?? height / 2) : height / 2;
+          }).strength((d: GraphNode) => {
+            if (numAccounts <= 1) return 0;
+            return d.type === NodeType.ACCOUNT ? 0.5 : 0.12;
+          }),
+        )
+        .force("charge", d3.forceManyBody().strength(-350)) // 강한 반발력으로 겹침 방지
         .force(
           "collision",
           d3
             .forceCollide<GraphNode>()
-            .radius((d) => NODE_SIZES[d.type] + 30) // 충돌 반경: 노드 크기 + 30px (최소 5px 간격 보장)
+            .radius((d) => NODE_SIZES[d.type] + 28) // 노드 간 최소 간격 확보
             .strength(1.0)
-            .iterations(3), // 충돌 해소 반복 횟수 증가
-        )
-        .force("boundPosition", () => {
-          // 커스텀 Force: 노드가 홈 위치에서 MAX_MOVEMENT px 이상 벗어나지 못하게 제한
-          visibleNodes.forEach((node) => {
-            const home = nodeHomePositions.get(node.id);
-            if (home && node.x !== undefined && node.y !== undefined) {
-              const dx = node.x - home.x;
-              const dy = node.y - home.y;
-              const dist = Math.sqrt(dx * dx + dy * dy);
-
-              if (dist > MAX_MOVEMENT) {
-                const scale = MAX_MOVEMENT / dist;
-                node.x = home.x + dx * scale;
-                node.y = home.y + dy * scale;
-                node.vx = 0;
-                node.vy = 0;
-              }
-            }
-          });
-        });
+            .iterations(4),
+        );
 
       simulationRef.current = simulation;
 
@@ -1063,7 +1127,7 @@ export function ForceTopologyVisualization({
         .attr("stroke-dasharray", "none")
         .attr("opacity", 0.5);
 
-      // 피어링 연결은 별도 그룹에 숨김 상태로 추가 (호버 시 표시)
+      // 피어링 연결은 기본적으로 반투명으로 표시 (존재를 인식 가능하게)
       const peeringLinkElements = linkGroup
         .selectAll("line.peering-link")
         .data(peeringLinks)
@@ -1071,14 +1135,25 @@ export function ForceTopologyVisualization({
         .append("line")
         .attr("class", (d) => `link peering-link link-${d.id}`)
         .attr("data-link-id", (d) => d.id)
-        .attr("data-source", (d) => d.source)
-        .attr("data-target", (d) => d.target)
+        .attr("data-source", (d) => d.source as string)
+        .attr("data-target", (d) => d.target as string)
+        .attr("data-connection-type", (d) => d.connectionType ?? "")
         .attr("stroke", (d) =>
           d.connectionType ? CONNECTION_COLORS[d.connectionType] : "#999",
         )
-        .attr("stroke-width", 2.5)
-        .attr("stroke-dasharray", "6,3")
-        .attr("opacity", 0); // 기본적으로 숨김
+        .attr("stroke-width", (d) =>
+          d.connectionType === ConnectionType.VPC_PEERING ? 2 : 1.5,
+        )
+        .attr("stroke-dasharray", (d) => {
+          if (d.connectionType === ConnectionType.VPC_PEERING) return "8,4";
+          if (d.connectionType === ConnectionType.CLOUDWAN) return "4,2,2,2";
+          return "6,3";
+        })
+        .attr("opacity", (d) => {
+          if (d.connectionType === ConnectionType.VPC_PEERING) return 0.5;
+          if (d.connectionType === ConnectionType.CLOUDWAN) return 0.5;
+          return 0.4;
+        });
 
       // 노드 그리기
       const nodeGroup = g.append("g").attr("class", "nodes");
@@ -1106,6 +1181,21 @@ export function ForceTopologyVisualization({
         .attr("stroke", (d) => NODE_COLORS[d.type].stroke)
         .attr("stroke-width", 2.5);
 
+      // 노드 타입 아이콘 (SVG path, 24x24 기준 스케일 조정)
+      nodeElements
+        .append("path")
+        .attr("class", "node-icon")
+        .attr("d", (d) => NODE_ICONS[d.type])
+        .attr("transform", (d) => {
+          const size = NODE_SIZES[d.type];
+          const scale = (size * 1.5) / 24;
+          const offset = size * 0.75;
+          return `translate(${-offset}, ${-offset}) scale(${scale})`;
+        })
+        .attr("fill", (d) => NODE_COLORS[d.type].stroke)
+        .attr("opacity", 0.75)
+        .style("pointer-events", "none");
+
       // VPC 펼침/접힘 아이콘
       nodeElements
         .filter(
@@ -1115,8 +1205,8 @@ export function ForceTopologyVisualization({
         )
         .append("text")
         .attr("class", "expand-icon")
-        .attr("x", NODE_SIZES[NodeType.VPC] - 2)
-        .attr("y", -NODE_SIZES[NodeType.VPC] + 4)
+        .attr("x", NODE_SIZES[NodeType.VPC])
+        .attr("y", -NODE_SIZES[NodeType.VPC] + 6)
         .attr("text-anchor", "middle")
         .style("font-size", "10px")
         .style("font-weight", "bold")
@@ -1146,9 +1236,14 @@ export function ForceTopologyVisualization({
       nodeElements
         .append("text")
         .attr("class", "node-label")
-        .attr("y", (d) => NODE_SIZES[d.type] + 10)
+        .attr("y", (d) => NODE_SIZES[d.type] + 13)
         .attr("text-anchor", "middle")
-        .style("font-size", "8px")
+        .style("font-size", (d) => {
+          if (d.type === NodeType.ACCOUNT) return "11px";
+          if (d.type === NodeType.REGION) return "10px";
+          if (d.type === NodeType.VPC) return "9px";
+          return "8px";
+        })
         .style("fill", "#333")
         .style("pointer-events", "none")
         .text((d) => d.displayName);
@@ -1193,6 +1288,15 @@ export function ForceTopologyVisualization({
         })
         .on("mouseenter", (event, d) => {
           setHoveredNodeId(d.id);
+          const containerRect = containerRef.current?.getBoundingClientRect();
+          if (containerRect) {
+            setTooltip({
+              visible: true,
+              x: event.clientX - containerRect.left + 14,
+              y: event.clientY - containerRect.top - 8,
+              node: d,
+            });
+          }
           onNodeHover?.({
             id: d.id,
             type: d.type,
@@ -1200,16 +1304,26 @@ export function ForceTopologyVisualization({
             metadata: d.metadata,
           });
         })
+        .on("mousemove", (event) => {
+          const containerRect = containerRef.current?.getBoundingClientRect();
+          if (containerRect) {
+            setTooltip((prev) =>
+              prev ? { ...prev, x: event.clientX - containerRect.left + 14, y: event.clientY - containerRect.top - 8 } : prev,
+            );
+          }
+        })
         .on("mouseleave", () => {
           setHoveredNodeId(null);
+          setTooltip(null);
           onNodeHover?.(null);
         });
 
-      // 드래그 설정
+      // 드래그 설정 (드래그 후 해당 위치에 고정 – 빈 공간 클릭으로 전체 해제)
       const drag = d3
         .drag<SVGGElement, GraphNode>()
         .on("start", (event, d) => {
-          if (!event.active) simulation.alphaTarget(0.3).restart();
+          event.sourceEvent.stopPropagation();
+          if (!event.active) simulation.alphaTarget(0.1).restart();
           d.fx = d.x;
           d.fy = d.y;
         })
@@ -1219,8 +1333,11 @@ export function ForceTopologyVisualization({
         })
         .on("end", (event, d) => {
           if (!event.active) simulation.alphaTarget(0);
-          d.fx = null;
-          d.fy = null;
+          // 드래그 후 위치 고정 (사용자 의도 존중)
+          d.fx = d.x;
+          d.fy = d.y;
+          userPinnedNodesRef.current.add(d.id);
+          nodePositionsRef.current.set(d.id, { x: d.x!, y: d.y! });
         });
 
       nodeElements.call(
@@ -1258,6 +1375,8 @@ export function ForceTopologyVisualization({
           });
         });
       });
+      // useEffect cleanup: 타임아웃 정리
+      return () => clearTimeout(unlockTimeout);
     } catch (error) {
       console.error("Force 토폴로지 렌더링 오류:", error);
       onError?.(error instanceof Error ? error : new Error("렌더링 실패"));
@@ -1339,8 +1458,57 @@ export function ForceTopologyVisualization({
         if (hoveredNode.type === NodeType.VPC) {
           targetVpcId = hoveredNode.id;
         } else if (hoveredNode.type === NodeType.SUBNET) {
-          // 서브넷의 부모 VPC 찾기
-          targetVpcId = hoveredNode.parentId || null;
+          // 서브넷 호버 시: 해당 서브넷의 RTB 기반 연결만 탐색 (VPC 전체 연결 집계 사용 금지)
+          connectedNodeIds.add(hoveredNode.id);
+
+          // 부모 VPC와 그 계층(리전, 계정) 추가
+          if (hoveredNode.parentId) {
+            connectedNodeIds.add(hoveredNode.parentId);
+            const vpcNode = nodes.find((n) => n.id === hoveredNode.parentId);
+            if (vpcNode?.parentId) {
+              connectedNodeIds.add(vpcNode.parentId);
+              const regionNode = nodes.find((n) => n.id === vpcNode.parentId);
+              if (regionNode?.parentId) {
+                connectedNodeIds.add(regionNode.parentId);
+              }
+            }
+            // 같은 VPC 내 형제 서브넷들 추가
+            vpcToSubnets.get(hoveredNode.parentId)?.forEach((subnet) => {
+              connectedNodeIds.add(subnet.id);
+            });
+          }
+
+          // 이 서브넷의 RTB에 피어링이 있는 경우에만 연결된 서브넷/VPC 추가
+          const subnetConnections = nodeConnections.get(hoveredNode.id);
+          if (subnetConnections) {
+            subnetConnections.forEach((connectedId) => {
+              connectedNodeIds.add(connectedId);
+              // 연결된 노드의 VPC 및 그 계층 추가
+              const connectedNode = nodes.find((n) => n.id === connectedId);
+              const connectedVpcId =
+                connectedNode?.type === NodeType.VPC
+                  ? connectedId
+                  : connectedNode?.parentId;
+              if (connectedVpcId) {
+                connectedNodeIds.add(connectedVpcId);
+                vpcToSubnets.get(connectedVpcId)?.forEach((subnet) => {
+                  connectedNodeIds.add(subnet.id);
+                });
+                const connectedVpcNode = nodes.find((n) => n.id === connectedVpcId);
+                if (connectedVpcNode?.parentId) {
+                  connectedNodeIds.add(connectedVpcNode.parentId);
+                  const connectedRegionNode = nodes.find(
+                    (n) => n.id === connectedVpcNode.parentId,
+                  );
+                  if (connectedRegionNode?.parentId) {
+                    connectedNodeIds.add(connectedRegionNode.parentId);
+                  }
+                }
+              }
+            });
+          }
+
+          // VPC 레벨 BFS 하지 않음 (targetVpcId = null 유지)
         } else if (hoveredNode.type === NodeType.REGION) {
           // 리전 호버 시: 해당 리전의 모든 VPC와 연결된 네트워크 탐색
           const regionVpcs = nodes.filter(
@@ -1469,27 +1637,54 @@ export function ForceTopologyVisualization({
         connectedNodeIds.has(targetId);
 
       if (isConnectedLink) {
-        linkEl
-          .transition()
-          .duration(150)
-          .attr("stroke", HIGHLIGHT_COLOR)
-          .attr("stroke-width", 4)
-          .attr("opacity", 1)
-          .attr("stroke-dasharray", "none");
-      } else {
-        const linkId = linkEl.attr("data-link-id");
-        const isPeering = linkId?.startsWith("peering-");
+        const isConnectedPeering = linkEl.attr("class")?.includes("peering-link");
+        const connectedConnType = linkEl.attr("data-connection-type") as ConnectionType | "";
+        // 피어링 연결은 점선 패턴 유지, 트리 연결은 실선
+        const highlightDash =
+          isConnectedPeering && connectedConnType === ConnectionType.VPC_PEERING ? "8,4" :
+          isConnectedPeering && connectedConnType === ConnectionType.CLOUDWAN ? "4,2,2,2" :
+          isConnectedPeering ? "6,3" : "none";
 
         linkEl
           .transition()
           .duration(150)
-          .attr(
-            "stroke",
-            isPeering ? CONNECTION_COLORS[ConnectionType.VPC_PEERING] : "#999",
-          )
-          .attr("stroke-width", isPeering ? 2.5 : 1.5)
-          .attr("opacity", isPeering ? 0 : 0.5) // 피어링 연결은 기본적으로 숨김
-          .attr("stroke-dasharray", isPeering ? "6,3" : "none");
+          .attr("stroke", HIGHLIGHT_COLOR)
+          .attr("stroke-width", isConnectedPeering ? 3.5 : 4)
+          .attr("opacity", 1)
+          .attr("stroke-dasharray", highlightDash)
+          .attr("filter", "url(#highlight-glow)");
+      } else {
+        const isPeering = linkEl.attr("class")?.includes("peering-link");
+        const connType = linkEl.attr("data-connection-type") as ConnectionType | "";
+
+        if (isPeering) {
+          // 피어링 연결: 원래 색상/두께/대시 패턴으로 복원
+          const defaultColor = connType ? CONNECTION_COLORS[connType] ?? "#999" : "#999";
+          const defaultWidth = connType === ConnectionType.VPC_PEERING ? 2 : 1.5;
+          const defaultDash =
+            connType === ConnectionType.VPC_PEERING ? "8,4" :
+            connType === ConnectionType.CLOUDWAN ? "4,2,2,2" : "6,3";
+          const defaultOpacity =
+            connType === ConnectionType.VPC_PEERING ? 0.5 :
+            connType === ConnectionType.CLOUDWAN ? 0.5 : 0.4;
+
+          linkEl
+            .transition()
+            .duration(150)
+            .attr("stroke", defaultColor)
+            .attr("stroke-width", defaultWidth)
+            .attr("opacity", defaultOpacity)
+            .attr("stroke-dasharray", defaultDash)
+            .attr("filter", "none");
+        } else {
+          linkEl
+            .transition()
+            .duration(150)
+            .attr("stroke", "#999")
+            .attr("stroke-width", 1.5)
+            .attr("opacity", 0.5)
+            .attr("stroke-dasharray", "none");
+        }
       }
     });
   }, [
@@ -1501,6 +1696,23 @@ export function ForceTopologyVisualization({
     nodes,
     vpcToSubnets,
   ]);
+
+  // 피어링 링크 표시/숨김 토글
+  useEffect(() => {
+    if (!svgRef.current) return;
+    const svg = d3.select(svgRef.current);
+    svg.selectAll(".peering-link").each(function () {
+      const linkEl = d3.select(this);
+      const connType = linkEl.attr("data-connection-type") as ConnectionType | "";
+      const defaultOpacity =
+        connType === ConnectionType.VPC_PEERING ? 0.5 :
+        connType === ConnectionType.CLOUDWAN ? 0.5 : 0.4;
+      linkEl
+        .transition()
+        .duration(200)
+        .attr("opacity", showPeeringLinks ? defaultOpacity : 0);
+    });
+  }, [showPeeringLinks]);
 
   // 줌 컨트롤
   const handleZoomIn = useCallback(() => {
@@ -1556,6 +1768,16 @@ export function ForceTopologyVisualization({
         .call(zoomBehaviorRef.current.transform, newTransform);
       zoomTransformRef.current = newTransform;
     }
+    // 드래그 핀 전체 해제
+    userPinnedNodesRef.current.clear();
+    wasVisibleRef.current.clear();
+    nodePositionsRef.current.clear();
+    if (simulationRef.current) {
+      simulationRef.current.nodes().forEach((node) => {
+        node.fx = null;
+        node.fy = null;
+      });
+    }
     setExpandedVpcs(new Set());
     setSelectedSubnet(null);
     setHoveredNodeId(null);
@@ -1600,47 +1822,94 @@ export function ForceTopologyVisualization({
         </Button>
       </div>
 
-      {/* 범례 */}
-      <div className="absolute bottom-4 left-4 z-10 bg-white/95 rounded-lg p-3 shadow-md border text-xs">
-        <div className="font-semibold mb-2">범례</div>
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
-          {[
-            { type: NodeType.ACCOUNT, label: "계정" },
-            { type: NodeType.REGION, label: "리전" },
-            { type: NodeType.VPC, label: "VPC" },
-            { type: NodeType.SUBNET, label: "서브넷" },
-          ].map(({ type, label }) => (
-            <div key={type} className="flex items-center gap-2">
-              <div
-                className="w-4 h-4 rounded-full border-2"
-                style={{
-                  backgroundColor: NODE_COLORS[type].fill,
-                  borderColor: NODE_COLORS[type].stroke,
-                }}
-              />
-              <span>{label}</span>
+      {/* Guide */}
+      <div className="absolute bottom-4 left-4 z-10 bg-white/95 rounded-lg shadow-md border text-xs">
+        {/* 헤더 (항상 표시) */}
+        <button
+          onClick={() => setShowLegend((v) => !v)}
+          className="flex items-center justify-between w-full px-3 py-2 font-semibold hover:bg-gray-50 rounded-lg transition-colors"
+        >
+          <span>Guide</span>
+          <span className="ml-6 text-gray-400 text-[10px]">{showLegend ? "▲" : "▼"}</span>
+        </button>
+
+        {/* 접었다 펼치는 본문 */}
+        {showLegend && (
+          <div className="px-3 pb-3 border-t">
+            {/* 노드 타입 */}
+            <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5">
+              {[
+                { type: NodeType.ACCOUNT, label: "Account" },
+                { type: NodeType.REGION, label: "Region" },
+                { type: NodeType.VPC, label: "VPC" },
+                { type: NodeType.SUBNET, label: "Subnet" },
+                { type: NodeType.IGW, label: "Internet GW" },
+                { type: NodeType.NAT, label: "NAT GW" },
+              ].map(({ type, label }) => (
+                <div key={type} className="flex items-center gap-2">
+                  <div
+                    className="w-3.5 h-3.5 rounded-full border-2 flex-shrink-0"
+                    style={{
+                      backgroundColor: NODE_COLORS[type].fill,
+                      borderColor: NODE_COLORS[type].stroke,
+                    }}
+                  />
+                  <span>{label}</span>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-        <div className="mt-2 pt-2 border-t">
-          <div className="flex items-center gap-2">
-            <div
-              className="w-4 h-4 rounded-full"
-              style={{
-                backgroundColor: HIGHLIGHT_COLOR,
-                boxShadow: HIGHLIGHT_GLOW,
-              }}
-            />
-            <span>연결/호버</span>
+            {/* 연결 타입 */}
+            <div className="mt-2 pt-2 border-t space-y-1.5">
+              <div className="font-semibold mb-1.5 text-gray-600">Connections</div>
+              <div className="flex items-center gap-2">
+                <svg width="28" height="6" className="flex-shrink-0">
+                  <line x1="0" y1="3" x2="28" y2="3" stroke={CONNECTION_COLORS[ConnectionType.VPC_PEERING]} strokeWidth="2" strokeDasharray="8,4" />
+                </svg>
+                <span>VPC Peering</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <svg width="28" height="6" className="flex-shrink-0">
+                  <line x1="0" y1="3" x2="28" y2="3" stroke={CONNECTION_COLORS[ConnectionType.CLOUDWAN]} strokeWidth="2" strokeDasharray="4,2,2,2" />
+                </svg>
+                <span>CloudWAN</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <svg width="28" height="6" className="flex-shrink-0">
+                  <line x1="0" y1="3" x2="28" y2="3" stroke="#999" strokeWidth="1.5" />
+                </svg>
+                <span>Hierarchy</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div
+                  className="w-3.5 h-3.5 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: HIGHLIGHT_COLOR, boxShadow: HIGHLIGHT_GLOW }}
+                />
+                <span>Highlighted</span>
+              </div>
+            </div>
+            {/* 피어링 토글 */}
+            <div className="mt-2 pt-2 border-t">
+              <button
+                onClick={() => setShowPeeringLinks((v) => !v)}
+                className={`w-full px-2 py-1 rounded text-[10px] font-medium border transition-colors ${
+                  showPeeringLinks
+                    ? "bg-teal-50 border-teal-300 text-teal-700 hover:bg-teal-100"
+                    : "bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100"
+                }`}
+              >
+                {showPeeringLinks ? "Hide Peering Links" : "Show Peering Links"}
+              </button>
+            </div>
+            {/* 사용법 */}
+            <div className="mt-2 pt-2 border-t text-muted-foreground space-y-0.5">
+              <p>• VPC click: expand / collapse subnets</p>
+              <p>• Drag: pin node to position</p>
+              <p>• Click canvas: unpin all</p>
+              <p>• Hover: highlight connected nodes</p>
+              <p>• ↺ Reset: recalculate layout</p>
+            </div>
           </div>
-        </div>
-        <div className="mt-2 pt-2 border-t text-muted-foreground">
-          <p>• VPC 클릭: 서브넷 펼침 + 하이라이트 고정</p>
-          <p>• 서브넷 클릭: 하이라이트 고정</p>
-          <p>• 빈 공간 클릭: 고정 해제</p>
-          <p>• 노드 드래그: 위치 이동</p>
-          <p>• 노드 호버: 연결 하이라이트</p>
-        </div>
+        )}
       </div>
 
       {/* 선택된 서브넷 정보 */}
@@ -1658,6 +1927,100 @@ export function ForceTopologyVisualization({
           >
             선택 해제
           </Button>
+        </div>
+      )}
+
+      {/* 호버 툴팁 */}
+      {tooltip?.visible && tooltip.node && (
+        <div
+          className="absolute z-20 pointer-events-none bg-gray-900/95 text-white rounded-lg shadow-xl border border-gray-700 text-xs"
+          style={{ left: tooltip.x, top: tooltip.y, maxWidth: 260 }}
+        >
+          <div className="px-3 py-2 border-b border-gray-700">
+            <div className="font-semibold text-sm truncate">{tooltip.node.displayName}</div>
+            <div className="text-gray-400 text-[10px] mt-0.5">{tooltip.node.type}</div>
+          </div>
+          <div className="px-3 py-2 space-y-1">
+            {tooltip.node.type === NodeType.ACCOUNT && (
+              <div className="text-gray-300">
+                <span className="text-gray-500">계정 ID:</span> {tooltip.node.id}
+              </div>
+            )}
+            {tooltip.node.type === NodeType.REGION && (
+              <div className="text-gray-300">
+                <span className="text-gray-500">리전:</span> {tooltip.node.metadata.region as string}
+              </div>
+            )}
+            {tooltip.node.type === NodeType.VPC && (
+              <>
+                <div className="text-gray-300">
+                  <span className="text-gray-500">VPC ID:</span> {tooltip.node.id}
+                </div>
+                {tooltip.node.metadata.cidrBlock && (
+                  <div className="text-gray-300">
+                    <span className="text-gray-500">CIDR:</span> {tooltip.node.metadata.cidrBlock as string}
+                  </div>
+                )}
+                {tooltip.node.metadata.region && (
+                  <div className="text-gray-300">
+                    <span className="text-gray-500">리전:</span> {tooltip.node.metadata.region as string}
+                  </div>
+                )}
+                {tooltip.node.metadata.accountId && (
+                  <div className="text-gray-300">
+                    <span className="text-gray-500">계정:</span> {tooltip.node.metadata.accountId as string}
+                  </div>
+                )}
+                {(vpcToSubnets.get(tooltip.node.id)?.length ?? 0) > 0 && (
+                  <div className="text-gray-300">
+                    <span className="text-gray-500">서브넷:</span> {vpcToSubnets.get(tooltip.node.id)?.length}개
+                  </div>
+                )}
+              </>
+            )}
+            {tooltip.node.type === NodeType.SUBNET && (
+              <>
+                <div className="text-gray-300">
+                  <span className="text-gray-500">서브넷 ID:</span> {tooltip.node.id}
+                </div>
+                {tooltip.node.metadata.cidrBlock && (
+                  <div className="text-gray-300">
+                    <span className="text-gray-500">CIDR:</span> {tooltip.node.metadata.cidrBlock as string}
+                  </div>
+                )}
+                {tooltip.node.metadata.availabilityZone && (
+                  <div className="text-gray-300">
+                    <span className="text-gray-500">AZ:</span> {tooltip.node.metadata.availabilityZone as string}
+                  </div>
+                )}
+                <div className="text-gray-300">
+                  <span className="text-gray-500">타입:</span>{" "}
+                  {tooltip.node.metadata.isPublic ? (
+                    <span className="text-blue-400">퍼블릭</span>
+                  ) : (
+                    <span className="text-amber-400">프라이빗</span>
+                  )}
+                </div>
+                {tooltip.node.metadata.isGrouped && (
+                  <div className="text-gray-300">
+                    <span className="text-gray-500">AZ 수:</span> {tooltip.node.metadata.subnetCount as number}개 통합
+                  </div>
+                )}
+              </>
+            )}
+            {(tooltip.node.type === NodeType.IGW || tooltip.node.type === NodeType.NAT) && (
+              <>
+                <div className="text-gray-300">
+                  <span className="text-gray-500">ID:</span> {tooltip.node.id}
+                </div>
+                {tooltip.node.metadata.vpcId && (
+                  <div className="text-gray-300">
+                    <span className="text-gray-500">VPC:</span> {tooltip.node.metadata.vpcId as string}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
       )}
 

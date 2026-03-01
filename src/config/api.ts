@@ -111,6 +111,39 @@ export const API_CONFIG = {
       MODULE: "/api/v1/provisioning-defaults/modules/:id",
       TEMPLATE: "/api/v1/provisioning-defaults/templates/:id",
     },
+    // EKS Upgrade endpoints
+    EKS_UPGRADE: {
+      CAMPAIGNS: "/api/v1/eks-upgrade/campaigns",
+      CAMPAIGN: "/api/v1/eks-upgrade/campaigns/:id",
+      CAMPAIGN_BLOCKS: "/api/v1/eks-upgrade/campaigns/:campaignId/blocks",
+      CAMPAIGN_CLUSTERS: "/api/v1/eks-upgrade/campaigns/:campaignId/clusters",
+      REORDER_BLOCKS: "/api/v1/eks-upgrade/campaigns/:campaignId/blocks/reorder",
+      LINK_TEMPLATE: "/api/v1/eks-upgrade/campaigns/:campaignId/link-template",
+      BLOCK: "/api/v1/eks-upgrade/blocks/:blockId",
+      CLUSTER: "/api/v1/eks-upgrade/clusters/:instanceId",
+      BLOCK_STATE: "/api/v1/eks-upgrade/clusters/:instanceId/blocks/:blockId/state",
+      BLOCK_OVERRIDE: "/api/v1/eks-upgrade/clusters/:instanceId/blocks/:blockId/override",
+      GIT_CLONE: "/api/v1/eks-upgrade/clusters/:instanceId/blocks/:blockId/clone",
+      CLUSTER_DEPLOYMENTS: "/api/v1/eks-upgrade/clusters/:instanceId/deployments",
+      BLOCK_ROLLOUT: "/api/v1/eks-upgrade/clusters/:instanceId/blocks/:blockId/rollout",
+      BLOCK_RUN: "/api/v1/eks-upgrade/clusters/:instanceId/blocks/:blockId/run",
+      BLOCK_TEMPLATES: "/api/v1/eks-upgrade/block-templates",
+      BLOCK_TEMPLATE: "/api/v1/eks-upgrade/block-templates/:id",
+      TEMPLATE_BLOCKS: "/api/v1/eks-upgrade/block-templates/:templateId/blocks",
+      REORDER_TEMPLATE_BLOCKS: "/api/v1/eks-upgrade/block-templates/:templateId/blocks/reorder",
+    },
+    // kubectl context management (Admin)
+    KUBECTL_CONTEXTS: {
+      LIST: "/api/v1/kubectl-contexts",
+      ITEM: "/api/v1/kubectl-contexts/:id",
+    },
+    // Locust endpoints
+    LOCUST: {
+      SCAN: "/api/v1/locust/clusters/:instanceId/scan",
+      START: "/api/v1/locust/clusters/:instanceId/start",
+      STOP: "/api/v1/locust/clusters/:instanceId/stop",
+      SESSION: "/api/v1/locust/clusters/:instanceId/session",
+    },
   },
 };
 

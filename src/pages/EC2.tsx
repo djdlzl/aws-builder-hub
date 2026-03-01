@@ -83,6 +83,7 @@ interface EC2Instance {
   publicIp: string;
   privateIp: string;
   az: string;
+  accountId?: string;
   accountName?: string;
   region?: string;
   scheduledStopDate?: Date;
@@ -407,6 +408,7 @@ export default function EC2() {
                 publicIpAddress?: string;
                 privateIpAddress?: string;
                 availabilityZone: string;
+                accountId: string;
                 accountName: string;
                 region: string;
               }) => {
@@ -420,6 +422,7 @@ export default function EC2() {
                   publicIp: inst.publicIpAddress || "-",
                   privateIp: inst.privateIpAddress || "-",
                   az: inst.availabilityZone,
+                  accountId: inst.accountId,
                   accountName: inst.accountName,
                   region: inst.region,
                 };
@@ -430,7 +433,7 @@ export default function EC2() {
           // Filter by selected account if set
           const filtered = selectedAccount
             ? list.filter(
-                (i: EC2Instance) => i.accountName === selectedAccount.name,
+                (i: EC2Instance) => i.accountId === selectedAccount.accountId,
               )
             : list;
 
@@ -1472,11 +1475,18 @@ export default function EC2() {
                         className="border-t border-border bg-background animate-in slide-in-from-top-2 duration-200 overflow-hidden"
                         style={{ height: "700px" }}
                       >
-                        <SSMTerminal
-                          instanceId={instance.id}
-                          instanceName={instance.name}
-                          onClose={handleCloseTerminal}
-                        />
+                        {selectedAccount ? (
+                          <SSMTerminal
+                            instanceId={instance.id}
+                            accountId={instance.accountId ?? selectedAccount.accountId}
+                            instanceName={instance.name}
+                            onClose={handleCloseTerminal}
+                          />
+                        ) : (
+                          <div className="flex items-center justify-center h-full text-muted-foreground">
+                            계정을 선택해주세요
+                          </div>
+                        )}
                       </div>
                     </td>
                   </tr>
