@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import {
   CheckSquare, Terminal, Package, Tag, FileText, GitBranch, Activity, RotateCcw,
-  GripVertical, Pencil, Trash2, ChevronDown, ChevronUp,
+  GripVertical, Pencil, Trash2, ChevronDown, ChevronUp, Power,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { deleteBlock, reorderTemplateBlocks } from "@/lib/api/eks-upgrade";
+import { deleteBlock, reorderTemplateBlocks, toggleBlock } from "@/lib/api/eks-upgrade";
 import type { Block, BlockStage, BlockType } from "@/types/eks-upgrade";
 import { BLOCK_STAGE_META } from "@/types/eks-upgrade";
 import { EditBlockDialog } from "@/components/eks-upgrade/EditBlockDialog";
@@ -75,6 +75,19 @@ export function BlockList({ templateId, blocks, onRefresh }: Props) {
     } catch (error) {
       toast({
         title: "블록 삭제 실패",
+        description: error instanceof Error ? error.message : "알 수 없는 오류",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleToggle = async (blockId: number) => {
+    try {
+      await toggleBlock(blockId);
+      onRefresh();
+    } catch (error) {
+      toast({
+        title: "블록 상태 변경 실패",
         description: error instanceof Error ? error.message : "알 수 없는 오류",
         variant: "destructive",
       });
@@ -216,7 +229,7 @@ export function BlockList({ templateId, blocks, onRefresh }: Props) {
             <Card
               className={cn(
                 "overflow-hidden transition-all",
-                isDragging && "opacity-40",
+                isDragging ? "opacity-40" : !block.isEnabled && "opacity-50",
               )}
               draggable
               onDragStart={(e) => handleDragStart(e, block.id)}
@@ -237,13 +250,16 @@ export function BlockList({ templateId, blocks, onRefresh }: Props) {
                 <Icon className={`h-4 w-4 flex-shrink-0 ${meta.color}`} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-foreground">{block.title}</span>
+                    <span className={cn("text-sm font-medium", block.isEnabled ? "text-foreground" : "text-muted-foreground line-through")}>{block.title}</span>
                   </div>
                   {block.description && (
                     <p className="text-xs text-muted-foreground truncate mt-0.5">{block.description}</p>
                   )}
                 </div>
                 <Badge variant="secondary" className="text-xs shrink-0">{meta.label}</Badge>
+                {!block.isEnabled && (
+                  <Badge variant="outline" className="text-xs shrink-0 text-muted-foreground">비활성</Badge>
+                )}
                 <div className="flex items-center gap-1">
                   <Button
                     variant="ghost"
@@ -253,33 +269,45 @@ export function BlockList({ templateId, blocks, onRefresh }: Props) {
                   >
                     <Pencil className="h-3.5 w-3.5" />
                   </Button>
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-destructive hover:text-destructive"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>정말 삭제하시겠습니까?</AlertDialogTitle>
-                        <AlertDialogDescription>블록 "{block.title}"을 삭제합니다. 이 작업은 되돌릴 수 없습니다.</AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>취소</AlertDialogCancel>
-                        <AlertDialogAction
-                          onClick={() => handleDelete(block.id)}
-                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  {templateId === undefined ? (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className={cn("h-7 w-7", block.isEnabled ? "text-muted-foreground" : "text-primary")}
+                      title={block.isEnabled ? "비활성화" : "활성화"}
+                      onClick={(e) => { e.stopPropagation(); handleToggle(block.id); }}
+                    >
+                      <Power className="h-3.5 w-3.5" />
+                    </Button>
+                  ) : (
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-destructive hover:text-destructive"
+                          onClick={(e) => e.stopPropagation()}
                         >
-                          삭제
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>정말 삭제하시겠습니까?</AlertDialogTitle>
+                          <AlertDialogDescription>블록 "{block.title}"을 삭제합니다. 이 작업은 되돌릴 수 없습니다.</AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>취소</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => handleDelete(block.id)}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          >
+                            삭제
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  )}
                   {isExpanded
                     ? <ChevronUp className="h-4 w-4 text-muted-foreground" />
                     : <ChevronDown className="h-4 w-4 text-muted-foreground" />
