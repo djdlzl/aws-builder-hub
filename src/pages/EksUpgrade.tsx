@@ -585,7 +585,6 @@ export default function EksUpgrade() {
                 <CampaignDetailPanel
                   campaign={campaignDetail}
                   onRefresh={() => selectedCampaignId && loadCampaignDetail(selectedCampaignId, false)}
-                  onDelete={() => { setSelectedCampaignId(null); setSelectedClusterId(null); loadCampaigns(); }}
                 />
               ) : (
                 <Card>
