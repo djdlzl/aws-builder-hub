@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { Plus, Loader2, AlertCircle, FileText, Pencil, Trash2, Link, Unlink } from "lucide-react";
+import { Plus, Loader2, AlertCircle, FileText, Link, Unlink, MoreVertical, Copy } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -23,8 +23,14 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import {
   fetchBlockTemplates,
@@ -33,6 +39,7 @@ import {
   updateBlockTemplate,
   deleteBlockTemplate,
   createTemplateBlock,
+  duplicateBlockTemplate,
 } from "@/lib/api/eks-upgrade";
 import type { BlockTemplateSummary, BlockTemplateDetail, CreateBlockRequest } from "@/types/eks-upgrade";
 import { BlockList } from "@/components/eks-upgrade/BlockList";
@@ -128,6 +135,7 @@ export function BlockTemplateTab({ refreshToken = 0, onCreateButtonRef }: Props)
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<EditingTemplate | null>(null);
   const [addBlockOpen, setAddBlockOpen] = useState(false);
+  const [templateToDelete, setTemplateToDelete] = useState<BlockTemplateSummary | null>(null);
 
   const loadTemplates = useCallback(async () => {
     try {
@@ -237,6 +245,21 @@ export function BlockTemplateTab({ refreshToken = 0, onCreateButtonRef }: Props)
     }
   };
 
+  const handleDuplicateTemplate = async (id: number) => {
+    try {
+      const duplicated = await duplicateBlockTemplate(id);
+      toast({ title: "블록 템플릿 복제 완료" });
+      await loadTemplates();
+      setSelectedTemplateId(duplicated.id);
+    } catch (error) {
+      toast({
+        title: "블록 템플릿 복제 실패",
+        description: error instanceof Error ? error.message : "알 수 없는 오류",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleAddBlock = async (request: CreateBlockRequest) => {
     if (!selectedTemplateId) return;
     try {
@@ -280,43 +303,89 @@ export function BlockTemplateTab({ refreshToken = 0, onCreateButtonRef }: Props)
                   const usedByCount = template.usedByCampaigns.length;
 
                   return (
-                    <div
-                      key={template.id}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => setSelectedTemplateId(template.id)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          setSelectedTemplateId(template.id);
-                        }
-                      }}
-                      className={cn(
-                        "w-full text-left rounded-lg p-3 transition-all hover:bg-accent cursor-pointer",
-                        isSelected
-                          ? "bg-primary/5 border border-primary/30 shadow-sm"
-                          : "border border-transparent"
-                      )}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-foreground truncate">{template.name}</p>
-                          <div className="flex items-center gap-1.5 mt-1">
-                            <Badge variant="secondary" className="h-5 px-2 text-[11px]">
-                              블록 {template.blockCount}개
-                            </Badge>
-                            <Badge variant="secondary" className="h-5 px-2 text-[11px]">
-                              연결 캠페인 {usedByCount}개
-                            </Badge>
+                    <div key={template.id} className="relative group">
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setSelectedTemplateId(template.id)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            setSelectedTemplateId(template.id);
+                          }
+                        }}
+                        className={cn(
+                          "w-full text-left rounded-lg p-3 transition-all hover:bg-accent cursor-pointer pr-10",
+                          isSelected
+                            ? "bg-primary/5 border border-primary/30 shadow-sm"
+                            : "border border-transparent"
+                        )}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-foreground truncate">{template.name}</p>
+                            <div className="flex items-center gap-1.5 mt-1">
+                              <Badge variant="secondary" className="h-5 px-2 text-[11px]">
+                                블록 {template.blockCount}개
+                              </Badge>
+                              <Badge variant="secondary" className="h-5 px-2 text-[11px]">
+                                연결 캠페인 {usedByCount}개
+                              </Badge>
+                            </div>
                           </div>
+                          <Badge
+                            variant={usedByCount > 0 ? "outline" : "secondary"}
+                            className={cn("text-xs shrink-0", usedByCount > 0 && "border-emerald-500/40 text-emerald-600")}
+                          >
+                            {usedByCount > 0 ? "연결됨" : "미연결"}
+                          </Badge>
                         </div>
-                        <Badge
-                          variant={usedByCount > 0 ? "outline" : "secondary"}
-                          className={cn("text-xs shrink-0", usedByCount > 0 && "border-emerald-500/40 text-emerald-600")}
-                        >
-                          {usedByCount > 0 ? "연결됨" : "미연결"}
-                        </Badge>
                       </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="absolute top-1/2 right-1 -translate-y-1/2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <MoreVertical className="h-3.5 w-3.5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-40">
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingTemplate({
+                                id: template.id,
+                                name: template.name,
+                                description: template.description ?? null,
+                              });
+                            }}
+                          >
+                            편집
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDuplicateTemplate(template.id);
+                            }}
+                          >
+                            <Copy className="h-3.5 w-3.5 mr-2" />
+                            복제
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setTemplateToDelete(template);
+                            }}
+                          >
+                            삭제
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   );
                 })}
@@ -339,56 +408,12 @@ export function BlockTemplateTab({ refreshToken = 0, onCreateButtonRef }: Props)
             {/* 템플릿 헤더 */}
             <Card>
               <CardHeader className="pb-3">
-                <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
                   <div className="flex-1 min-w-0">
                     <CardTitle className="text-lg">{templateDetail.name}</CardTitle>
                     {templateDetail.description && (
                       <p className="text-sm text-muted-foreground mt-1">{templateDetail.description}</p>
                     )}
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
-                      onClick={() =>
-                        setEditingTemplate({
-                          id: templateDetail.id,
-                          name: templateDetail.name,
-                          description: templateDetail.description ?? null,
-                        })
-                      }
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 p-0 text-destructive hover:text-destructive"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>정말 삭제하시겠습니까?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            블록 템플릿 "{templateDetail.name}"을 삭제합니다. 이 작업은 되돌릴 수 없습니다.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>취소</AlertDialogCancel>
-                          <AlertDialogAction
-                            onClick={() => handleDeleteTemplate(templateDetail.id)}
-                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                          >
-                            삭제
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
                   </div>
                 </div>
 
@@ -478,6 +503,31 @@ export function BlockTemplateTab({ refreshToken = 0, onCreateButtonRef }: Props)
         onOpenChange={setAddBlockOpen}
         onSubmit={handleAddBlock}
       />
+
+      <AlertDialog open={templateToDelete !== null} onOpenChange={(open) => { if (!open) setTemplateToDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>정말 삭제하시겠습니까?</AlertDialogTitle>
+            <AlertDialogDescription>
+              블록 템플릿 "{templateToDelete?.name}"을 삭제합니다. 이 작업은 되돌릴 수 없습니다.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setTemplateToDelete(null)}>취소</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (templateToDelete) {
+                  handleDeleteTemplate(templateToDelete.id);
+                  setTemplateToDelete(null);
+                }
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              삭제
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
