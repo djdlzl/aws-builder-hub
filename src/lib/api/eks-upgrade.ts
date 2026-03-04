@@ -1,4 +1,11 @@
 import { API_CONFIG, buildApiUrl } from "@/config/api";
+
+export interface AwsAccountSummary {
+  id: number;
+  accountId: string;
+  accountName: string;
+}
+
 import type {
   CampaignDetail,
   CampaignSummary,
@@ -113,12 +120,28 @@ export async function deleteBlock(blockId: number): Promise<void> {
   if (!response.ok) throw new Error("블록 삭제에 실패했습니다.");
 }
 
+export async function toggleBlock(blockId: number): Promise<Block> {
+  const response = await fetch(
+    buildApiUrl(API_CONFIG.ENDPOINTS.EKS_UPGRADE.TOGGLE_BLOCK, { blockId: String(blockId) }),
+    { method: "PATCH", headers: getAuthHeaders() }
+  );
+  return parseResponse<Block>(response, "블록 활성화 상태 변경에 실패했습니다.");
+}
+
 export async function reorderBlocks(campaignId: number, blockIds: number[]): Promise<void> {
   const response = await fetch(
     buildApiUrl(API_CONFIG.ENDPOINTS.EKS_UPGRADE.REORDER_BLOCKS, { campaignId: String(campaignId) }),
     { method: "PUT", headers: getAuthHeaders(), body: JSON.stringify({ blockIds }) }
   );
   if (!response.ok) throw new Error("블록 순서 변경에 실패했습니다.");
+}
+
+export async function reorderClusterInstances(campaignId: number, instanceIds: number[]): Promise<void> {
+  const response = await fetch(
+    buildApiUrl(API_CONFIG.ENDPOINTS.EKS_UPGRADE.REORDER_CLUSTERS, { campaignId: String(campaignId) }),
+    { method: "PUT", headers: getAuthHeaders(), body: JSON.stringify({ instanceIds }) }
+  );
+  if (!response.ok) throw new Error("클러스터 순서 변경에 실패했습니다.");
 }
 
 // ─── Cluster Instance ────────────────────────────────────────
@@ -306,6 +329,14 @@ export async function deleteBlockTemplate(id: number): Promise<void> {
   if (!response.ok) throw new Error("블록 템플릿 삭제에 실패했습니다.");
 }
 
+export async function duplicateBlockTemplate(id: number): Promise<BlockTemplateSummary> {
+  const response = await fetch(
+    buildApiUrl(API_CONFIG.ENDPOINTS.EKS_UPGRADE.DUPLICATE_TEMPLATE, { id: String(id) }),
+    { method: "POST", headers: getAuthHeaders() }
+  );
+  return parseResponse<BlockTemplateSummary>(response, "블록 템플릿 복제에 실패했습니다.");
+}
+
 export async function createTemplateBlock(templateId: number, request: CreateBlockRequest): Promise<Block> {
   const response = await fetch(
     buildApiUrl(API_CONFIG.ENDPOINTS.EKS_UPGRADE.TEMPLATE_BLOCKS, { templateId: String(templateId) }),
@@ -327,6 +358,16 @@ export async function linkTemplate(campaignId: number, templateId: number | null
   const fullUrl = templateId !== null ? `${url}?templateId=${templateId}` : url;
   const response = await fetch(fullUrl, { method: "PUT", headers: getAuthHeaders() });
   return parseResponse<CampaignDetail>(response, "템플릿 연결에 실패했습니다.");
+}
+
+// ─── AWS Accounts ─────────────────────────────────────────────
+
+export async function fetchVerifiedAwsAccounts(): Promise<AwsAccountSummary[]> {
+  const response = await fetch(
+    buildApiUrl(API_CONFIG.ENDPOINTS.AWS_ACCOUNTS.VERIFIED),
+    { headers: getAuthHeaders() }
+  );
+  return parseResponse<AwsAccountSummary[]>(response, "AWS 계정 목록을 불러오지 못했습니다.");
 }
 
 // ─── Kubectl Context ─────────────────────────────────────────

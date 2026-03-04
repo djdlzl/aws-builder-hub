@@ -33,6 +33,7 @@ export interface Block {
   filePath: string | null;
   params: string | null;
   isOptional: boolean;
+  isEnabled: boolean;
 }
 
 export interface CampaignRef {
