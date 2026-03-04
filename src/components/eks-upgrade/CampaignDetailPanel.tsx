@@ -26,6 +26,20 @@ import type { CampaignDetail, BlockTemplateSummary } from "@/types/eks-upgrade";
 import { BlockList } from "@/components/eks-upgrade/BlockList";
 import { linkTemplate, fetchBlockTemplates } from "@/lib/api/eks-upgrade";
 
+const CAMPAIGN_STATUS_LABEL: Record<string, string> = {
+  DRAFT: "초안",
+  ACTIVE: "진행 중",
+  COMPLETED: "완료",
+  CANCELLED: "취소",
+};
+
+const CAMPAIGN_STATUS_VARIANT: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
+  DRAFT: "secondary",
+  ACTIVE: "default",
+  COMPLETED: "outline",
+  CANCELLED: "destructive",
+};
+
 interface Props {
   campaign: CampaignDetail;
   onRefresh: () => void;
@@ -87,6 +101,9 @@ export function CampaignDetailPanel({ campaign, onRefresh }: Props) {
               <div className="flex items-center gap-2 flex-wrap">
                 <Badge variant="outline" className="text-sm font-mono">
                   v{campaign.sourceVersion} → v{campaign.targetVersion}
+                </Badge>
+                <Badge variant={CAMPAIGN_STATUS_VARIANT[campaign.status] ?? "secondary"}>
+                  {CAMPAIGN_STATUS_LABEL[campaign.status] ?? campaign.status}
                 </Badge>
               </div>
               {campaign.description && (
