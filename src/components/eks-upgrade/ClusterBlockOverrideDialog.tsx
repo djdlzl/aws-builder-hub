@@ -4,10 +4,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, Plus, Trash2, RotateCcw } from "lucide-react";
 import { upsertBlockOverride } from "@/lib/api/eks-upgrade";
 import { useToast } from "@/hooks/use-toast";
 import type { Block, BlockOverride } from "@/types/eks-upgrade";
+import {
+  CUSTOM_LOCUST_GATEWAY_OPTION,
+  getLocustGatewaySelectValue,
+  LOCUST_GATEWAY_URL_OPTIONS,
+} from "@/constants/locust";
 
 interface AddonItem {
   name: string;
@@ -52,6 +58,7 @@ export function ClusterBlockOverrideDialog({ instanceId, block, override, open, 
 
   // LOCUST params override
   const [locustParams, setLocustParams] = useState<LocustParams>({ gatewayUrl: "", workerCount: undefined });
+  const [locustGatewaySelectValue, setLocustGatewaySelectValue] = useState(CUSTOM_LOCUST_GATEWAY_OPTION);
 
   const isAddon = block.blockType === "ADDON";
   const isGitClone = block.blockType === "GIT_CLONE";
@@ -94,12 +101,15 @@ export function ClusterBlockOverrideDialog({ instanceId, block, override, open, 
       const raw = override?.paramsOverride ?? block.params;
       try {
         const parsed = raw ? JSON.parse(raw) : {};
-        setLocustParams({ gatewayUrl: parsed.gatewayUrl ?? "", workerCount: parsed.workerCount });
+        const gatewayUrl = parsed.gatewayUrl ?? "";
+        setLocustParams({ gatewayUrl, workerCount: parsed.workerCount });
+        setLocustGatewaySelectValue(getLocustGatewaySelectValue(gatewayUrl));
       } catch {
         setLocustParams({ gatewayUrl: "", workerCount: undefined });
+        setLocustGatewaySelectValue(CUSTOM_LOCUST_GATEWAY_OPTION);
       }
     }
-  }, [open, block, override]);
+  }, [open, block, override, isAddon, isGitClone, isLocust, showCommand]);
 
   const handleReset = () => {
     if (showCommand) setCommandValue(block.command ?? "");
@@ -118,8 +128,13 @@ export function ClusterBlockOverrideDialog({ instanceId, block, override, open, 
     if (isLocust) {
       try {
         const parsed = block.params ? JSON.parse(block.params) : {};
-        setLocustParams({ gatewayUrl: parsed.gatewayUrl ?? "", workerCount: parsed.workerCount });
-      } catch { setLocustParams({ gatewayUrl: "", workerCount: undefined }); }
+        const gatewayUrl = parsed.gatewayUrl ?? "";
+        setLocustParams({ gatewayUrl, workerCount: parsed.workerCount });
+        setLocustGatewaySelectValue(getLocustGatewaySelectValue(gatewayUrl));
+      } catch {
+        setLocustParams({ gatewayUrl: "", workerCount: undefined });
+        setLocustGatewaySelectValue(CUSTOM_LOCUST_GATEWAY_OPTION);
+      }
     }
   };
 
@@ -308,7 +323,39 @@ export function ClusterBlockOverrideDialog({ instanceId, block, override, open, 
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs text-muted-foreground">Gateway URL</Label>
-                  <Input value={locustParams.gatewayUrl} onChange={(e) => setLocustParams((p) => ({ ...p, gatewayUrl: e.target.value }))} className="font-mono text-sm" placeholder="http://..." />
+                  <Select
+                    value={locustGatewaySelectValue}
+                    onValueChange={(value) => {
+                      setLocustGatewaySelectValue(value);
+                      if (value !== CUSTOM_LOCUST_GATEWAY_OPTION) {
+                        setLocustParams((p) => ({ ...p, gatewayUrl: value }));
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="font-mono text-sm">
+                      <SelectValue placeholder="게이트웨이 URL 선택" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {LOCUST_GATEWAY_URL_OPTIONS.map((url) => (
+                        <SelectItem key={url} value={url} className="font-mono text-xs">
+                          {url}
+                        </SelectItem>
+                      ))}
+                      <SelectItem value={CUSTOM_LOCUST_GATEWAY_OPTION}>직접 입력</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {locustGatewaySelectValue === CUSTOM_LOCUST_GATEWAY_OPTION && (
+                    <Input
+                      value={locustParams.gatewayUrl}
+                      onChange={(e) => {
+                        const gatewayUrl = e.target.value;
+                        setLocustParams((p) => ({ ...p, gatewayUrl }));
+                        setLocustGatewaySelectValue(getLocustGatewaySelectValue(gatewayUrl));
+                      }}
+                      className="font-mono text-sm"
+                      placeholder="https://custom-gateway.example.com"
+                    />
+                  )}
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs text-muted-foreground">Worker Count (선택)</Label>

@@ -8,14 +8,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import type { BlockType, BlockStage, CheckItem, CreateBlockRequest } from "@/types/eks-upgrade";
 import { BLOCK_STAGE_META } from "@/types/eks-upgrade";
+import {
+  CUSTOM_LOCUST_GATEWAY_OPTION,
+  getLocustGatewaySelectValue,
+  LOCUST_GATEWAY_URL_OPTIONS,
+} from "@/constants/locust";
 
 const BLOCK_TYPE_OPTIONS: { value: BlockType; label: string; description: string }[] = [
   { value: "CHECK",   label: "체크",             description: "수동으로 확인하는 체크리스트 항목" },
   { value: "RUN",     label: "실행",             description: "kubectl, aws cli 등 명령어 실행 (서버에서 직접 실행)" },
   { value: "ROLLOUT", label: "Rollout",          description: "kubectl rollout restart - 클러스터에서 deployment 선택 후 순차 실행" },
   { value: "ADDON",   label: "애드온 업그레이드", description: "EKS 애드온 버전 업그레이드" },
-  { value: "VERSION", label: "버전 정보",         description: "컴포넌트의 현재→목표 버전을 명시" },
-  { value: "GIT_CLONE", label: "버전 업데이트",  description: "SSH URL로 repo를 clone하고 code-server에서 편집" },
+  { value: "GIT_CLONE", label: "코드 편집",       description: "SSH URL로 repo를 clone하고 code-server에서 편집" },
   { value: "LOCUST",  label: "Locust 헬스체크",  description: "서비스 헬스체크 + Locust 부하 테스트" },
   { value: "NOTE",    label: "메모",             description: "참고 사항이나 설명 텍스트" },
 ];
@@ -53,11 +57,8 @@ export function AddBlockDialog({ open, onOpenChange, onSubmit }: Props) {
 
   // LOCUST 전용 상태
   const [locustGatewayUrl, setLocustGatewayUrl] = useState("");
+  const [locustGatewaySelectValue, setLocustGatewaySelectValue] = useState(CUSTOM_LOCUST_GATEWAY_OPTION);
   const [locustWorkerCount, setLocustWorkerCount] = useState(5);
-
-  // VERSION 전용 상태
-  const [versionCurrent, setVersionCurrent] = useState("");
-  const [versionTarget, setVersionTarget] = useState("");
 
   // CHECK 전용 상태
   const [checkItems, setCheckItems] = useState<CheckItem[]>([{ id: crypto.randomUUID(), label: "" }]);
@@ -68,7 +69,6 @@ export function AddBlockDialog({ open, onOpenChange, onSubmit }: Props) {
   const isAddon = blockType === "ADDON";
   const isGitClone = blockType === "GIT_CLONE";
   const isLocust = blockType === "LOCUST";
-  const isVersion = blockType === "VERSION";
 
   const updateAddon = (index: number, field: keyof AddonItem, value: string) => {
     setAddonItems((prev) => prev.map((item, i) => (i === index ? { ...item, [field]: value } : item)));
@@ -90,9 +90,8 @@ export function AddBlockDialog({ open, onOpenChange, onSubmit }: Props) {
     setGitBranch("");
     setGitTargetDir("");
     setLocustGatewayUrl("");
+    setLocustGatewaySelectValue(CUSTOM_LOCUST_GATEWAY_OPTION);
     setLocustWorkerCount(5);
-    setVersionCurrent("");
-    setVersionTarget("");
     setCheckItems([{ id: crypto.randomUUID(), label: "" }]);
     setBlockType("CHECK");
   };
@@ -122,12 +121,6 @@ export function AddBlockDialog({ open, onOpenChange, onSubmit }: Props) {
         gatewayUrl: locustGatewayUrl.trim(),
         workerCount: locustWorkerCount,
       });
-    } else if (isVersion) {
-      if (!versionCurrent.trim() || !versionTarget.trim()) return;
-      params = JSON.stringify({
-        current: versionCurrent.trim(),
-        target: versionTarget.trim(),
-      });
     }
 
     try {
@@ -152,8 +145,7 @@ export function AddBlockDialog({ open, onOpenChange, onSubmit }: Props) {
     (isCheck && checkItems.every((c) => !c.label.trim())) ||
     (isAddon && addonItems.every((a) => !a.name.trim())) ||
     (isGitClone && !gitRepoUrl.trim()) ||
-    (isLocust && !locustGatewayUrl.trim()) ||
-    (isVersion && (!versionCurrent.trim() || !versionTarget.trim()));
+    (isLocust && !locustGatewayUrl.trim());
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -218,33 +210,6 @@ export function AddBlockDialog({ open, onOpenChange, onSubmit }: Props) {
               rows={2}
             />
           </div>
-
-          {/* VERSION 전용 UI */}
-          {isVersion && (
-            <div className="space-y-2">
-              <Label>버전 정보 <span className="text-destructive">*</span></Label>
-              <div className="rounded-lg border border-border overflow-hidden">
-                <div className="grid grid-cols-2 gap-0 bg-muted/50 px-3 py-2 text-xs text-muted-foreground font-medium">
-                  <span>현재 버전</span>
-                  <span className="pl-3 border-l border-border/50">목표 버전</span>
-                </div>
-                <div className="grid grid-cols-2 gap-0 border-t border-border/50 px-3 py-2 items-center">
-                  <Input
-                    placeholder="예: 1.28"
-                    value={versionCurrent}
-                    onChange={(e) => setVersionCurrent(e.target.value)}
-                    className="h-7 text-sm border-0 shadow-none focus-visible:ring-0 px-0 rounded-none font-mono"
-                  />
-                  <Input
-                    placeholder="예: 1.29"
-                    value={versionTarget}
-                    onChange={(e) => setVersionTarget(e.target.value)}
-                    className="h-7 text-sm border-0 border-l border-border/50 shadow-none focus-visible:ring-0 px-3 rounded-none font-mono"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* CHECK 전용 UI */}
           {isCheck && (
@@ -419,12 +384,39 @@ export function AddBlockDialog({ open, onOpenChange, onSubmit }: Props) {
             <div className="space-y-3">
               <div className="space-y-1.5">
                 <Label>게이트웨이 URL <span className="text-destructive">*</span></Label>
-                <Input
-                  placeholder="https://kr-gw.spooncast.net"
-                  value={locustGatewayUrl}
-                  onChange={(e) => setLocustGatewayUrl(e.target.value)}
-                  className="font-mono text-sm"
-                />
+                <Select
+                  value={locustGatewaySelectValue}
+                  onValueChange={(value) => {
+                    setLocustGatewaySelectValue(value);
+                    if (value !== CUSTOM_LOCUST_GATEWAY_OPTION) {
+                      setLocustGatewayUrl(value);
+                    }
+                  }}
+                >
+                  <SelectTrigger className="font-mono text-sm">
+                    <SelectValue placeholder="게이트웨이 URL 선택" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {LOCUST_GATEWAY_URL_OPTIONS.map((url) => (
+                      <SelectItem key={url} value={url} className="font-mono text-xs">
+                        {url}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value={CUSTOM_LOCUST_GATEWAY_OPTION}>직접 입력</SelectItem>
+                  </SelectContent>
+                </Select>
+                {locustGatewaySelectValue === CUSTOM_LOCUST_GATEWAY_OPTION && (
+                  <Input
+                    placeholder="https://custom-gateway.example.com"
+                    value={locustGatewayUrl}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setLocustGatewayUrl(value);
+                      setLocustGatewaySelectValue(getLocustGatewaySelectValue(value));
+                    }}
+                    className="font-mono text-sm"
+                  />
+                )}
               </div>
               <div className="space-y-1.5">
                 <Label>Worker 수</Label>

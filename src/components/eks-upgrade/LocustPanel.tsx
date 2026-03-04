@@ -1,13 +1,14 @@
-import { useState, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Activity,
   ExternalLink,
+  Loader2,
   Play,
-  RefreshCw,
   Square,
   Zap,
 } from "lucide-react";
@@ -15,33 +16,35 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import {
   getLatestSession,
-  scanServices,
   startLocust,
   stopLocust,
 } from "@/lib/api/locust";
 import type { LocustSession } from "@/types/locust";
+import {
+  CUSTOM_LOCUST_GATEWAY_OPTION,
+  getLocustGatewaySelectValue,
+  LOCUST_GATEWAY_URL_OPTIONS,
+} from "@/constants/locust";
 
 interface LocustPanelProps {
   clusterInstanceId: number;
   defaultGatewayUrl?: string;
-  defaultWorkerCount?: number;
 }
 
 export default function LocustPanel({
   clusterInstanceId,
   defaultGatewayUrl = "",
-  defaultWorkerCount = 5,
 }: LocustPanelProps) {
   const { toast } = useToast();
 
   const [session, setSession] = useState<LocustSession | null>(null);
   const [gatewayUrl, setGatewayUrl] = useState(defaultGatewayUrl);
-  const [workerCount, setWorkerCount] = useState(defaultWorkerCount);
-  const [scannedServices, setScannedServices] = useState<string[]>([]);
+  const [gatewaySelectValue, setGatewaySelectValue] = useState(getLocustGatewaySelectValue(defaultGatewayUrl));
 
-  const [isScanning, setIsScanning] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
+  const [isOpenButtonCoolingDown, setIsOpenButtonCoolingDown] = useState(false);
+  const openButtonCooldownTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     getLatestSession(clusterInstanceId)
@@ -49,26 +52,18 @@ export default function LocustPanel({
       .catch(() => {});
   }, [clusterInstanceId]);
 
-  const handleScan = async () => {
-    if (!gatewayUrl) {
-      toast({ title: "게이트웨이 URL을 입력해주세요.", variant: "destructive" });
-      return;
-    }
-    setIsScanning(true);
-    try {
-      const result = await scanServices(clusterInstanceId, gatewayUrl);
-      setScannedServices(result.services);
-      toast({ title: `${result.count}개 서비스 감지됨` });
-    } catch (e: unknown) {
-      toast({
-        title: "서비스 스캔 실패",
-        description: e instanceof Error ? e.message : String(e),
-        variant: "destructive",
-      });
-    } finally {
-      setIsScanning(false);
-    }
-  };
+  useEffect(() => {
+    setGatewayUrl(defaultGatewayUrl);
+    setGatewaySelectValue(getLocustGatewaySelectValue(defaultGatewayUrl));
+  }, [defaultGatewayUrl]);
+
+  useEffect(() => {
+    return () => {
+      if (openButtonCooldownTimerRef.current != null) {
+        window.clearTimeout(openButtonCooldownTimerRef.current);
+      }
+    };
+  }, []);
 
   const handleStart = async () => {
     if (!gatewayUrl) {
@@ -77,9 +72,15 @@ export default function LocustPanel({
     }
     setIsStarting(true);
     try {
-      const result = await startLocust(clusterInstanceId, gatewayUrl, workerCount);
+      const result = await startLocust(clusterInstanceId, gatewayUrl, 5);
       setSession(result);
-      setScannedServices(result.services);
+      setIsOpenButtonCoolingDown(true);
+      if (openButtonCooldownTimerRef.current != null) {
+        window.clearTimeout(openButtonCooldownTimerRef.current);
+      }
+      openButtonCooldownTimerRef.current = window.setTimeout(() => {
+        setIsOpenButtonCoolingDown(false);
+      }, 5000);
       toast({ title: `Locust 시작됨 (port: ${result.port})` });
     } catch (e: unknown) {
       toast({
@@ -97,6 +98,11 @@ export default function LocustPanel({
     try {
       const result = await stopLocust(clusterInstanceId);
       setSession(result);
+      setIsOpenButtonCoolingDown(false);
+      if (openButtonCooldownTimerRef.current != null) {
+        window.clearTimeout(openButtonCooldownTimerRef.current);
+        openButtonCooldownTimerRef.current = null;
+      }
       toast({ title: "Locust 중지됨" });
     } catch (e: unknown) {
       toast({
@@ -110,9 +116,26 @@ export default function LocustPanel({
   };
 
   const isRunning = session?.status === "RUNNING";
-  const displayServices = isRunning
-    ? session?.services ?? []
-    : scannedServices;
+  const resolvedLocustUrl = (() => {
+    if (!session?.port && !session?.locustUrl) return null;
+    const fallbackPath = session?.port ? `/locust/${session.port}/` : null;
+    const fallback = fallbackPath ? `${window.location.origin}${fallbackPath}` : null;
+    if (!session?.locustUrl) return fallback;
+    if (session.locustUrl.startsWith("/")) {
+      return `${window.location.origin}${session.locustUrl}`;
+    }
+    try {
+      const parsed = new URL(session.locustUrl);
+      // 서버가 localhost로 내려주더라도 현재 접속 도메인으로 자동 보정
+      if (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1") {
+        return fallback;
+      }
+      return session.locustUrl;
+    } catch {
+      return fallback;
+    }
+  })();
+  const displayServices = session?.services ?? [];
 
   return (
     <div className="space-y-4 pt-4 border-t border-border">
@@ -125,49 +148,55 @@ export default function LocustPanel({
       </div>
 
       {/* 설정 입력 */}
-      <div className="grid grid-cols-[1fr_auto] gap-2 items-end">
+      <div className="grid grid-cols-1 gap-2 items-end">
         <div className="space-y-1">
           <Label className="text-xs">게이트웨이 URL</Label>
-          <Input
-            value={gatewayUrl}
-            onChange={(e) => setGatewayUrl(e.target.value)}
-            placeholder="https://kr-gw.spooncast.net"
+          <Select
+            value={gatewaySelectValue}
+            onValueChange={(value) => {
+              setGatewaySelectValue(value);
+              if (value !== CUSTOM_LOCUST_GATEWAY_OPTION) {
+                setGatewayUrl(value);
+              }
+            }}
             disabled={isRunning}
-            className="h-8 text-sm"
-          />
-        </div>
-        <div className="space-y-1">
-          <Label className="text-xs">Worker 수</Label>
-          <Input
-            type="number"
-            value={workerCount}
-            onChange={(e) => setWorkerCount(Number(e.target.value))}
-            min={1}
-            max={20}
-            disabled={isRunning}
-            className="h-8 text-sm w-20"
-          />
+          >
+            <SelectTrigger className="h-8 text-sm font-mono">
+              <SelectValue placeholder="게이트웨이 URL 선택" />
+            </SelectTrigger>
+            <SelectContent>
+              {LOCUST_GATEWAY_URL_OPTIONS.map((url) => (
+                <SelectItem key={url} value={url} className="font-mono text-xs">
+                  {url}
+                </SelectItem>
+              ))}
+              <SelectItem value={CUSTOM_LOCUST_GATEWAY_OPTION}>직접 입력</SelectItem>
+            </SelectContent>
+          </Select>
+          {gatewaySelectValue === CUSTOM_LOCUST_GATEWAY_OPTION && (
+            <Input
+              value={gatewayUrl}
+              onChange={(e) => {
+                const value = e.target.value;
+                setGatewayUrl(value);
+                setGatewaySelectValue(getLocustGatewaySelectValue(value));
+              }}
+              placeholder="https://custom-gateway.example.com"
+              disabled={isRunning}
+              className="h-8 text-sm font-mono"
+            />
+          )}
         </div>
       </div>
+      <p className="text-xs text-muted-foreground">실행 시 worker 수는 고정값 5로 동작합니다.</p>
 
       {/* 버튼 영역 */}
       <div className="flex items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleScan}
-          disabled={isScanning || isRunning}
-          className="gap-1.5"
-        >
-          <RefreshCw className={cn("h-3.5 w-3.5", isScanning && "animate-spin")} />
-          {isScanning ? "스캔 중..." : "서비스 스캔"}
-        </Button>
-
         {!isRunning ? (
           <Button
             size="sm"
             onClick={handleStart}
-            disabled={isStarting || isScanning}
+            disabled={isStarting}
             className="gap-1.5"
           >
             <Play className="h-3.5 w-3.5" />
@@ -186,18 +215,37 @@ export default function LocustPanel({
           </Button>
         )}
 
-        {isRunning && session?.locustUrl && (
+        {isRunning && resolvedLocustUrl && (
           <Button
             variant="outline"
             size="sm"
-            onClick={() => window.open(session.locustUrl!, "_blank")}
+            onClick={() => window.open(resolvedLocustUrl, "_blank")}
+            disabled={isOpenButtonCoolingDown}
             className="gap-1.5 ml-auto"
           >
-            <ExternalLink className="h-3.5 w-3.5" />
-            Locust 열기
+            {isOpenButtonCoolingDown ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <ExternalLink className="h-3.5 w-3.5" />
+            )}
+            {isOpenButtonCoolingDown ? "준비 중..." : "Locust 열기"}
           </Button>
         )}
       </div>
+
+      {isRunning && resolvedLocustUrl && (
+        <div className="space-y-1">
+          <Label className="text-xs">Locust URL</Label>
+          <a
+            href={resolvedLocustUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="block text-xs font-mono text-primary underline underline-offset-2 break-all"
+          >
+            {resolvedLocustUrl}
+          </a>
+        </div>
+      )}
 
       {/* 서비스 목록 */}
       {displayServices.length > 0 && (
