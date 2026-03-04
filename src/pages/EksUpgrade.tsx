@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Plus, Loader2, AlertCircle, Zap, Server, ChevronRight, ChevronDown, Trash2 } from "lucide-react";
+import { Plus, Loader2, AlertCircle, Zap, Server, ChevronRight, ChevronDown, MoreVertical } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
@@ -15,11 +15,21 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { fetchCampaigns, fetchCampaign, createCampaign, createClusterInstance, deleteCampaign } from "@/lib/api/eks-upgrade";
-import type { CampaignSummary, CampaignDetail, CreateClusterInstanceRequest } from "@/types/eks-upgrade";
+import { fetchCampaigns, fetchCampaign, createCampaign, createClusterInstance, deleteCampaign, updateCampaign, fetchVerifiedAwsAccounts, reorderClusterInstances } from "@/lib/api/eks-upgrade";
+import type { CampaignSummary, CampaignDetail, CreateClusterInstanceRequest, ClusterInstanceSummary, UpdateCampaignRequest } from "@/types/eks-upgrade";
 import { CreateCampaignDialog } from "@/components/eks-upgrade/CreateCampaignDialog";
 import { CampaignDetailPanel } from "@/components/eks-upgrade/CampaignDetailPanel";
 import { ClusterDetailPanel } from "@/components/eks-upgrade/ClusterDetailPanel";
@@ -48,6 +58,7 @@ export default function EksUpgrade() {
   const createTemplateRef = useRef<(() => void) | null>(null);
   const createContextRef = useRef<(() => void) | null>(null);
   const [campaigns, setCampaigns] = useState<CampaignSummary[]>([]);
+  const [accountNameMap, setAccountNameMap] = useState<Record<string, string>>({});
   const [selectedCampaignId, setSelectedCampaignId] = useState<number | null>(null);
   const [selectedClusterId, setSelectedClusterId] = useState<number | null>(null);
   const [campaignDetail, setCampaignDetail] = useState<CampaignDetail | null>(null);
@@ -55,7 +66,16 @@ export default function EksUpgrade() {
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [addClusterOpen, setAddClusterOpen] = useState(false);
+  const [draggingClusterId, setDraggingClusterId] = useState<number | null>(null);
+  const [insertBeforeClusterId, setInsertBeforeClusterId] = useState<number | "end" | null>(null);
   const [blocksRefreshToken, setBlocksRefreshToken] = useState(0);
+  const [campaignToEdit, setCampaignToEdit] = useState<CampaignSummary | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editSourceVersion, setEditSourceVersion] = useState("");
+  const [editTargetVersion, setEditTargetVersion] = useState("");
+  const [isEditSaving, setIsEditSaving] = useState(false);
+  const [campaignToDelete, setCampaignToDelete] = useState<CampaignSummary | null>(null);
 
   const loadCampaigns = useCallback(async () => {
     try {
@@ -95,6 +115,16 @@ export default function EksUpgrade() {
   useEffect(() => {
     loadCampaigns();
   }, [loadCampaigns]);
+
+  useEffect(() => {
+    fetchVerifiedAwsAccounts()
+      .then((accounts) => {
+        const map: Record<string, string> = {};
+        accounts.forEach((a) => { map[a.accountId] = a.accountName; });
+        setAccountNameMap(map);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (selectedCampaignId === null) {
@@ -151,6 +181,50 @@ export default function EksUpgrade() {
     setSelectedClusterId((prev) => (prev === clusterId ? null : clusterId));
   };
 
+  const handleClusterDragStart = (e: React.DragEvent, clusterId: number) => {
+    setDraggingClusterId(clusterId);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleClusterDragOver = (e: React.DragEvent, clusterId: number, clusterList: ClusterInstanceSummary[]) => {
+    e.preventDefault();
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const midY = rect.top + rect.height / 2;
+    if (e.clientY < midY) {
+      setInsertBeforeClusterId(clusterId);
+    } else {
+      const idx = clusterList.findIndex((c) => c.id === clusterId);
+      const next = clusterList[idx + 1];
+      setInsertBeforeClusterId(next ? next.id : "end");
+    }
+  };
+
+  const handleClusterDrop = async (e: React.DragEvent, campaignId: number, clusterList: ClusterInstanceSummary[]) => {
+    e.preventDefault();
+    if (draggingClusterId === null || insertBeforeClusterId === null) return;
+    const fromIdx = clusterList.findIndex((c) => c.id === draggingClusterId);
+    const newOrder = [...clusterList];
+    const [moved] = newOrder.splice(fromIdx, 1);
+    const toIdx =
+      insertBeforeClusterId === "end"
+        ? newOrder.length
+        : newOrder.findIndex((c) => c.id === insertBeforeClusterId);
+    newOrder.splice(toIdx < 0 ? newOrder.length : toIdx, 0, moved);
+    setDraggingClusterId(null);
+    setInsertBeforeClusterId(null);
+    try {
+      await reorderClusterInstances(campaignId, newOrder.map((c) => c.id));
+      if (selectedCampaignId) loadCampaignDetail(selectedCampaignId, false);
+    } catch {
+      toast({ title: "순서 변경 실패", variant: "destructive" });
+    }
+  };
+
+  const handleClusterDragEnd = () => {
+    setDraggingClusterId(null);
+    setInsertBeforeClusterId(null);
+  };
+
   const handleCreateCampaign = useCallback(
     async (values: { name: string; description?: string; sourceVersion: string; targetVersion: string; blockTemplateId?: number }) => {
       try {
@@ -191,6 +265,42 @@ export default function EksUpgrade() {
     },
     [selectedCampaignId, loadCampaigns, toast]
   );
+
+  const handleStartEditCampaign = (campaign: CampaignSummary, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setCampaignToEdit(campaign);
+    setEditName(campaign.name);
+    setEditDescription(campaign.description ?? "");
+    setEditSourceVersion(campaign.sourceVersion);
+    setEditTargetVersion(campaign.targetVersion);
+  };
+
+  const handleSaveEditCampaign = async () => {
+    if (!campaignToEdit || !editName.trim()) return;
+    setIsEditSaving(true);
+    try {
+      await updateCampaign(campaignToEdit.id, {
+        name: editName.trim(),
+        description: editDescription.trim() || undefined,
+        sourceVersion: editSourceVersion.trim(),
+        targetVersion: editTargetVersion.trim(),
+      } as UpdateCampaignRequest);
+      toast({ title: "캠페인 수정 완료" });
+      setCampaignToEdit(null);
+      loadCampaigns();
+      if (selectedCampaignId === campaignToEdit.id) {
+        loadCampaignDetail(campaignToEdit.id, false);
+      }
+    } catch (error) {
+      toast({
+        title: "캠페인 수정 실패",
+        description: error instanceof Error ? error.message : "알 수 없는 오류",
+        variant: "destructive",
+      });
+    } finally {
+      setIsEditSaving(false);
+    }
+  };
 
   const handleAddCluster = useCallback(
     async (request: CreateClusterInstanceRequest) => {
@@ -283,7 +393,7 @@ export default function EksUpgrade() {
                             <div className="relative">
                               <div
                                 className={cn(
-                                  "w-full text-left rounded-lg p-3 transition-all hover:bg-accent pr-8 cursor-pointer",
+                                  "w-full text-left rounded-lg p-3 transition-all hover:bg-accent pr-10 cursor-pointer",
                                   isSelected
                                     ? "bg-primary/5 border border-primary/30 shadow-sm"
                                     : "border border-transparent"
@@ -322,35 +432,33 @@ export default function EksUpgrade() {
                                   </Badge>
                                 </div>
                               </div>
-                              <AlertDialog>
-                                <AlertDialogTrigger asChild>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
                                   <Button
                                     variant="ghost"
                                     size="icon"
-                                    className="absolute top-1/2 right-1 -translate-y-1/2 h-6 w-6 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                                    className="absolute top-1/2 right-1 -translate-y-1/2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
                                     onClick={(e) => e.stopPropagation()}
                                   >
-                                    <Trash2 className="h-3 w-3" />
+                                    <MoreVertical className="h-3.5 w-3.5" />
                                   </Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                  <AlertDialogHeader>
-                                    <AlertDialogTitle>정말 삭제하시겠습니까?</AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                      캠페인 "{campaign.name}"을 삭제합니다. 연결된 클러스터 및 블록 상태도 모두 삭제됩니다. 이 작업은 되돌릴 수 없습니다.
-                                    </AlertDialogDescription>
-                                  </AlertDialogHeader>
-                                  <AlertDialogFooter>
-                                    <AlertDialogCancel>취소</AlertDialogCancel>
-                                    <AlertDialogAction
-                                      onClick={() => handleDeleteCampaign(campaign.id)}
-                                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                    >
-                                      삭제
-                                    </AlertDialogAction>
-                                  </AlertDialogFooter>
-                                </AlertDialogContent>
-                              </AlertDialog>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-36">
+                                  <DropdownMenuItem onClick={(e) => handleStartEditCampaign(campaign, e)}>
+                                    편집
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    className="text-destructive focus:text-destructive"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setCampaignToDelete(campaign);
+                                    }}
+                                  >
+                                    삭제
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
                             </div>
 
                             {/* 클러스터 서브 메뉴 */}
@@ -370,7 +478,10 @@ export default function EksUpgrade() {
                                     클러스터 추가
                                   </button>
                                 ) : (
-                                  <>
+                                  <div
+                                    onDrop={(e) => handleClusterDrop(e, campaign.id, clusters)}
+                                    onDragOver={(e) => e.preventDefault()}
+                                  >
                                     {clusters.map((cluster) => {
                                       const isClusterSelected = selectedClusterId === cluster.id;
                                       const total = campaignDetail?.blocks.length || cluster.totalBlockCount;
@@ -379,39 +490,51 @@ export default function EksUpgrade() {
                                       const isClusterDone = total > 0 && completed >= total;
 
                                       return (
-                                        <button
-                                          key={cluster.id}
-                                          onClick={() => handleSelectCluster(cluster.id)}
-                                          className={cn(
-                                            "w-full text-left rounded-md px-2 py-2 transition-all",
-                                            isClusterSelected
-                                              ? "bg-primary/10 border border-primary/20"
-                                              : "hover:bg-accent border border-transparent"
+                                        <div key={cluster.id}>
+                                          {draggingClusterId !== null && insertBeforeClusterId === cluster.id && (
+                                            <div className="h-0.5 bg-primary rounded-full mx-1 my-0.5" />
                                           )}
-                                        >
-                                          <div className="flex items-center gap-1.5 min-w-0 mb-1">
-                                            <Server className={`h-3 w-3 shrink-0 ${isClusterDone ? "text-green-500" : isClusterSelected ? "text-primary" : "text-muted-foreground"}`} />
-                                            <span className={`text-xs font-medium truncate ${isClusterSelected ? "text-primary" : "text-foreground"}`}>
-                                              {cluster.clusterName}
-                                            </span>
-                                            <Badge variant="outline" className="text-xs px-1 py-0 h-4 shrink-0">
-                                              {cluster.environment}
-                                            </Badge>
-                                          </div>
-                                          {total > 0 && (
-                                            <div className="flex items-center gap-1.5 pl-4">
-                                              <Progress
-                                                value={clusterProgress}
-                                                className={`flex-1 h-1 ${isClusterDone ? "[&>div]:bg-green-500" : ""}`}
-                                              />
-                                              <span className={`text-xs shrink-0 ${isClusterDone ? "text-green-500" : "text-muted-foreground"}`}>
-                                                {completed}/{total}
+                                          <button
+                                            draggable
+                                            onDragStart={(e) => handleClusterDragStart(e, cluster.id)}
+                                            onDragOver={(e) => handleClusterDragOver(e, cluster.id, clusters)}
+                                            onDragEnd={handleClusterDragEnd}
+                                            onClick={() => handleSelectCluster(cluster.id)}
+                                            className={cn(
+                                              "w-full text-left rounded-md px-2 py-2 transition-all",
+                                              draggingClusterId === cluster.id ? "opacity-40" : "",
+                                              isClusterSelected
+                                                ? "bg-primary/10 border border-primary/20"
+                                                : "hover:bg-accent border border-transparent"
+                                            )}
+                                          >
+                                            <div className="flex items-center gap-1.5 min-w-0 mb-1">
+                                              <Server className={`h-3 w-3 shrink-0 ${isClusterDone ? "text-green-500" : isClusterSelected ? "text-primary" : "text-muted-foreground"}`} />
+                                              <span className={`text-xs font-medium truncate ${isClusterSelected ? "text-primary" : "text-foreground"}`}>
+                                                {cluster.clusterName}
                                               </span>
+                                              <Badge variant="outline" className="text-xs px-1 py-0 h-4 shrink-0">
+                                                {accountNameMap[cluster.environment] ?? cluster.environment}
+                                              </Badge>
                                             </div>
-                                          )}
-                                        </button>
+                                            {total > 0 && (
+                                              <div className="flex items-center gap-1.5 pl-4">
+                                                <Progress
+                                                  value={clusterProgress}
+                                                  className={`flex-1 h-1 ${isClusterDone ? "[&>div]:bg-green-500" : ""}`}
+                                                />
+                                                <span className={`text-xs shrink-0 ${isClusterDone ? "text-green-500" : "text-muted-foreground"}`}>
+                                                  {completed}/{total}
+                                                </span>
+                                              </div>
+                                            )}
+                                          </button>
+                                        </div>
                                       );
                                     })}
+                                    {draggingClusterId !== null && insertBeforeClusterId === "end" && (
+                                      <div className="h-0.5 bg-primary rounded-full mx-1 my-0.5" />
+                                    )}
                                     <button
                                       onClick={() => setAddClusterOpen(true)}
                                       className="w-full text-left px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground rounded transition-colors flex items-center gap-1.5 mt-0.5"
@@ -419,7 +542,7 @@ export default function EksUpgrade() {
                                       <Plus className="h-3 w-3" />
                                       클러스터 추가
                                     </button>
-                                  </>
+                                  </div>
                                 )}
                               </div>
                             )}
@@ -442,6 +565,7 @@ export default function EksUpgrade() {
                   blocks={campaignDetail.blocks}
                   sourceVersion={campaignDetail.sourceVersion}
                   targetVersion={campaignDetail.targetVersion}
+                  accountNameMap={accountNameMap}
                   onRefresh={() => selectedCampaignId && loadCampaignDetail(selectedCampaignId, false)}
                   onDeleted={() => {
                     setSelectedClusterId(null);
@@ -516,6 +640,68 @@ export default function EksUpgrade() {
         onOpenChange={setAddClusterOpen}
         onSubmit={handleAddCluster}
       />
+
+      {/* 캠페인 삭제 확인 다이얼로그 */}
+      <AlertDialog open={campaignToDelete !== null} onOpenChange={(open) => { if (!open) setCampaignToDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>정말 삭제하시겠습니까?</AlertDialogTitle>
+            <AlertDialogDescription>
+              캠페인 "{campaignToDelete?.name}"을 삭제합니다. 연결된 클러스터 및 블록 상태도 모두 삭제됩니다. 이 작업은 되돌릴 수 없습니다.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setCampaignToDelete(null)}>취소</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (campaignToDelete) {
+                  handleDeleteCampaign(campaignToDelete.id);
+                  setCampaignToDelete(null);
+                }
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              삭제
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* 캠페인 수정 다이얼로그 */}
+      <Dialog open={campaignToEdit !== null} onOpenChange={(open) => { if (!open) setCampaignToEdit(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>캠페인 수정</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label>이름</Label>
+              <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="캠페인 이름" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>설명</Label>
+              <Textarea value={editDescription} onChange={(e) => setEditDescription(e.target.value)} placeholder="설명 (선택)" rows={2} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>현재 버전</Label>
+                <Input value={editSourceVersion} onChange={(e) => setEditSourceVersion(e.target.value)} placeholder="예: 1.28" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>목표 버전</Label>
+                <Input value={editTargetVersion} onChange={(e) => setEditTargetVersion(e.target.value)} placeholder="예: 1.30" />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCampaignToEdit(null)} disabled={isEditSaving}>취소</Button>
+            <Button onClick={handleSaveEditCampaign} disabled={isEditSaving || !editName.trim()}>
+              {isEditSaving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              저장
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
