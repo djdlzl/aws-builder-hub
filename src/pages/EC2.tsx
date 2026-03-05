@@ -243,10 +243,10 @@ export default function EC2() {
   const fetchInstances = useCallback(
     async (showToast = false, forceRefresh = false) => {
       const isDemoAdmin =
-        localStorage.getItem("builderhub_auth_token") ===
+        localStorage.getItem("access_token") ===
         "mock-token-admin-demo";
       const isMockAdmin =
-        localStorage.getItem("builderhub_auth_token") === "mock-token-admin";
+        localStorage.getItem("access_token") === "mock-token-admin";
 
       if (isDemoAdmin) {
         const dummyInstances: EC2Instance[] = [
@@ -880,8 +880,8 @@ export default function EC2() {
 
   // 데모/모의 관리자 여부 확인 - 계정이 없어도 인스턴스 표시
   const isDemoOrMockAdmin =
-    localStorage.getItem("builderhub_auth_token") === "mock-token-admin-demo" ||
-    localStorage.getItem("builderhub_auth_token") === "mock-token-admin";
+    localStorage.getItem("access_token") === "mock-token-admin-demo" ||
+    localStorage.getItem("access_token") === "mock-token-admin";
 
   if (accounts.length === 0 && !isDemoOrMockAdmin) {
     return (

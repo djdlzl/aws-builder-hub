@@ -22,8 +22,6 @@ interface AuthContextType extends AuthState {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Storage key for auth token
-const AUTH_TOKEN_KEY = "builderhub_auth_token";
 const isMockAuthEnabled = import.meta.env.MODE === "development";
 
 type ApiUser = {
@@ -190,6 +188,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             name: "Admin Demo",
             role: "admin",
           };
+          localStorage.setItem("access_token", "mock-token-admin-demo");
+          localStorage.setItem("user_role", "ADMIN");
           setAuthState({
             user: mockUser,
             isAuthenticated: true,
@@ -203,6 +203,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             name: "Admin User",
             role: "admin",
           };
+          localStorage.setItem("access_token", "mock-token-admin");
+          localStorage.setItem("user_role", "ADMIN");
           setAuthState({
             user: mockUser,
             isAuthenticated: true,
@@ -216,6 +218,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             name: "Developer User",
             role: "developer",
           };
+          localStorage.setItem("access_token", "mock-token-developer");
+          localStorage.setItem("user_role", "DEVELOPER");
           setAuthState({
             user: mockUser,
             isAuthenticated: true,

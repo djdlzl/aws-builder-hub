@@ -91,7 +91,7 @@ export default function SsoSettings() {
   const [formData, setFormData] = useState<SsoFormData>(initialFormData);
   const { toast } = useToast();
 
-  const getAuthToken = () => localStorage.getItem("auth_token");
+  const getAuthToken = () => localStorage.getItem("access_token");
 
   const fetchConfigs = async () => {
     try {

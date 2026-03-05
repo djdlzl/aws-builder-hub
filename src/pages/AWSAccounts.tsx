@@ -130,12 +130,7 @@ export default function AWSAccounts() {
         buildApiUrl(API_CONFIG.ENDPOINTS.AWS_ACCOUNTS.CREATE),
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem(
-              "builderhub_auth_token"
-            )}`,
-          },
+          headers: getAuthHeaders(),
           body: JSON.stringify(newAccount),
         }
       );
@@ -182,11 +177,7 @@ export default function AWSAccounts() {
         }),
         {
           method: "POST",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem(
-              "builderhub_auth_token"
-            )}`,
-          },
+          headers: getAuthHeaders(),
         }
       );
 

@@ -72,9 +72,9 @@ export function AWSProvider({ children }: { children: ReactNode }) {
 
     // Check if admin_demo user is logged in
     const isDemoAdmin =
-      localStorage.getItem("builderhub_auth_token") === "mock-token-admin-demo";
+      localStorage.getItem("access_token") === "mock-token-admin-demo";
     const isMockAdmin =
-      localStorage.getItem("builderhub_auth_token") === "mock-token-admin";
+      localStorage.getItem("access_token") === "mock-token-admin";
 
     if (isDemoAdmin) {
       // Load dummy AWS accounts for admin_demo

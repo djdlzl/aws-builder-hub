@@ -5,6 +5,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Table,
   TableBody,
   TableCell,
@@ -38,6 +48,10 @@ export default function MandatoryTagKeySettings() {
   const [editDescription, setEditDescription] = useState("");
   const [editActive, setEditActive] = useState(true);
   const [savingId, setSavingId] = useState<number | null>(null);
+  const [pendingDeleteKey, setPendingDeleteKey] = useState<MandatoryTagKey | null>(
+    null
+  );
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const loadKeys = useCallback(async () => {
     try {
@@ -142,16 +156,14 @@ export default function MandatoryTagKeySettings() {
   };
 
   const handleDelete = async (key: MandatoryTagKey) => {
-    if (!confirm(`필수 태그 키 '${key.tagKey}'을 삭제하시겠습니까?`)) {
-      return;
-    }
-
+    setDeletingId(key.id);
     try {
       await deleteMandatoryTagKey(key.id);
       toast({
         title: "삭제 완료",
         description: "필수 태그 키가 삭제되었습니다.",
       });
+      setPendingDeleteKey(null);
       await loadKeys();
     } catch (error) {
       toast({
@@ -162,6 +174,8 @@ export default function MandatoryTagKeySettings() {
             : "필수 태그 키 삭제에 실패했습니다.",
         variant: "destructive",
       });
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -339,7 +353,7 @@ export default function MandatoryTagKeySettings() {
                               size="sm"
                               variant="outline"
                               className="text-destructive hover:text-destructive"
-                              onClick={() => handleDelete(key)}
+                              onClick={() => setPendingDeleteKey(key)}
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -354,6 +368,48 @@ export default function MandatoryTagKeySettings() {
           </Table>
         </div>
       )}
+
+      <AlertDialog
+        open={pendingDeleteKey !== null}
+        onOpenChange={(open) => {
+          if (!open && deletingId === null) {
+            setPendingDeleteKey(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>필수 태그 키를 삭제하시겠습니까?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDeleteKey
+                ? `태그 키 "${pendingDeleteKey.tagKey}"를 삭제합니다. 이 작업은 되돌릴 수 없습니다.`
+                : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingId !== null}>취소</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(event) => {
+                event.preventDefault();
+                if (pendingDeleteKey) {
+                  void handleDelete(pendingDeleteKey);
+                }
+              }}
+              disabled={deletingId !== null}
+            >
+              {deletingId !== null ? (
+                <span className="inline-flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  삭제 중...
+                </span>
+              ) : (
+                "삭제"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -106,10 +106,10 @@ export function ResourceTable({ accounts = [] }: ResourceTableProps) {
     const fetchResources = async () => {
       // Check if admin_demo user is logged in
       const isDemoAdmin =
-        localStorage.getItem("builderhub_auth_token") ===
+        localStorage.getItem("access_token") ===
         "mock-token-admin-demo";
       const isMockAdmin =
-        localStorage.getItem("builderhub_auth_token") === "mock-token-admin";
+        localStorage.getItem("access_token") === "mock-token-admin";
 
       if (isDemoAdmin) {
         // Load dummy resources for admin_demo

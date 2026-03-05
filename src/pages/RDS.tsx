@@ -177,10 +177,10 @@ export default function RDS() {
   const fetchInstances = useCallback(
     async (showToast = false, forceRefresh = false) => {
       const isDemoAdmin =
-        localStorage.getItem("builderhub_auth_token") ===
+        localStorage.getItem("access_token") ===
         "mock-token-admin-demo";
       const isMockAdmin =
-        localStorage.getItem("builderhub_auth_token") === "mock-token-admin";
+        localStorage.getItem("access_token") === "mock-token-admin";
 
       if (isDemoAdmin) {
         const dummyInstances: RDSInstance[] = [

@@ -92,10 +92,10 @@ export default function S3() {
     const fetchBuckets = async () => {
       // Check for demo/mock admin
       const isDemoAdmin =
-        localStorage.getItem("builderhub_auth_token") ===
+        localStorage.getItem("access_token") ===
         "mock-token-admin-demo";
       const isMockAdmin =
-        localStorage.getItem("builderhub_auth_token") === "mock-token-admin";
+        localStorage.getItem("access_token") === "mock-token-admin";
 
       if (isDemoAdmin) {
         const dummyBuckets: S3Bucket[] = [

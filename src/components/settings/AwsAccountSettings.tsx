@@ -80,10 +80,10 @@ export default function AwsAccountSettings() {
     try {
       // Check if admin_demo user is logged in
       const isDemoAdmin =
-        localStorage.getItem("builderhub_auth_token") ===
+        localStorage.getItem("access_token") ===
         "mock-token-admin-demo";
       const isMockAdmin =
-        localStorage.getItem("builderhub_auth_token") === "mock-token-admin";
+        localStorage.getItem("access_token") === "mock-token-admin";
 
       if (isDemoAdmin) {
         // Load dummy AWS accounts for admin_demo
@@ -191,9 +191,9 @@ export default function AwsAccountSettings() {
 
     // Check if demo or mock admin user is logged in
     const isDemoAdmin =
-      localStorage.getItem("builderhub_auth_token") === "mock-token-admin-demo";
+      localStorage.getItem("access_token") === "mock-token-admin-demo";
     const isMockAdmin =
-      localStorage.getItem("builderhub_auth_token") === "mock-token-admin";
+      localStorage.getItem("access_token") === "mock-token-admin";
 
     if (isDemoAdmin || isMockAdmin) {
       // Simulate account addition for demo/mock
@@ -256,9 +256,9 @@ export default function AwsAccountSettings() {
 
     // Check if demo or mock admin user is logged in
     const isDemoAdmin =
-      localStorage.getItem("builderhub_auth_token") === "mock-token-admin-demo";
+      localStorage.getItem("access_token") === "mock-token-admin-demo";
     const isMockAdmin =
-      localStorage.getItem("builderhub_auth_token") === "mock-token-admin";
+      localStorage.getItem("access_token") === "mock-token-admin";
 
     if (isDemoAdmin || isMockAdmin) {
       // Simulate verification for demo/mock
@@ -313,9 +313,9 @@ export default function AwsAccountSettings() {
 
     // Check if demo or mock admin user is logged in
     const isDemoAdmin =
-      localStorage.getItem("builderhub_auth_token") === "mock-token-admin-demo";
+      localStorage.getItem("access_token") === "mock-token-admin-demo";
     const isMockAdmin =
-      localStorage.getItem("builderhub_auth_token") === "mock-token-admin";
+      localStorage.getItem("access_token") === "mock-token-admin";
 
     if (isDemoAdmin || isMockAdmin) {
       // Simulate deletion for demo/mock
